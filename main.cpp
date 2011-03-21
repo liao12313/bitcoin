@@ -3460,7 +3460,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& 
         nPrevTime = nNow;
     }
     pblock->vtx[0].vin[0].scriptSig = CScript() << pblock->nBits << CBigNum(nExtraNonce);
-    pblock->hashMerkleRoot = pblock->BuildMerkleTree();
+	pblock->hashMerkleRoot = pblock->UpdateMerkleBranch(0);
 }
 
 
