@@ -800,6 +800,7 @@ bool CTransaction::AddToMemoryPoolUnchecked()
         for (int i = 0; i < vin.size(); i++)
             mapNextTx[vin[i].prevout] = CInPoint(&mapTransactions[hash], i);
         nTransactionsUpdated++;
+        printf("calling prtx from addtomempoolunch\n");
         ProcessTransactions();
     }
     return true;
@@ -815,7 +816,6 @@ bool CTransaction::RemoveFromMemoryPool()
             mapNextTx.erase(txin.prevout);
         mapTransactions.erase(GetHash());
         nTransactionsUpdated++;
-        ProcessTransactions();
     }
     return true;
 }
@@ -984,6 +984,7 @@ void ReacceptWalletTransactions()
                 fRepeat = true;  // Found missing transactions: re-do Reaccept.
         }
     }
+    printf("calling prtx from reaccept\n");
     ProcessTransactions(true);
 }
 
@@ -1613,7 +1614,8 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     bnBestChainWork = pindexNew->bnChainWork;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
-    ProcessTransactions();
+    printf("calling prtx from setbestchain\n");
+    ProcessTransactions(true);
     printf("SetBestChain: new best=%s  height=%d  work=%s\n", hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainWork.ToString().c_str());
 
     return true;
@@ -3312,9 +3314,9 @@ void ProcessTransactions(bool force)
 	static int64 nStart;
 
 	printf("%u: ProcessTransactions() entered\n", GetTimeMillis());
-	if (force || GetTime() - nStart > 60)
+	if (force || !pWorkBlock || GetTime() - nStart > 60)
 	{
-		printf("%u: ProcessTransactions() elapsed, updating\n", GetTimeMillis());
+		printf("ProcessTransactions() updating, %u transactions\n", mapTransactions.size());
 		CBlockIndex* pindexPrev = pindexBest;
 		nStart = GetTime();
 
@@ -3472,7 +3474,6 @@ void ProcessTransactions(bool force)
 			if (pWorkBlock)
 				delete pWorkBlock;
 			pWorkBlock = pblock.release();
-			printf("%u: ProcessTransactions() finished OK\n", GetTimeMillis());
 		}
 	}
 	printf("%u: ProcessTransactions() exits\n", GetTimeMillis());
@@ -3482,20 +3483,22 @@ void ProcessTransactions(bool force)
 CBlock* CreateNewBlock(CReserveKey& reservekey)
 {
 	static CBlock* pblock;
-	static uint256 lastMerkleRoot = 0;
+	static CBlock* lastWorkBlock;
 
 	printf("%u: CreateNewBlock() entered\n", GetTimeMillis());
     CRITICAL_BLOCK(work)
     {
     	if (!pWorkBlock)
+    	{
+    		printf("calling prtx from createblock\n");
     	    ProcessTransactions();
+    	}
     	if (!pWorkBlock)
     		return NULL;
 
-    	printf("CreateNewBlock() have pWorkBlock\n");
-    	if (!pblock || lastMerkleRoot != pWorkBlock->hashMerkleRoot)
+    	if (!pblock || lastWorkBlock != pWorkBlock)
     	{
-    		lastMerkleRoot = pWorkBlock->hashMerkleRoot;
+    		lastWorkBlock = pWorkBlock;
     		printf("CreateNewBlock() new pWorkBlock, copying\n");
     		/*if (!pblock)
     			printf("(pblock == NULL)\n");
@@ -3525,7 +3528,7 @@ CBlock* CreateNewBlock(CReserveKey& reservekey)
     	}
     }
 
-    printf("%u: CreateNewBlock() about to exit\n", GetTimeMillis());
+    printf("%u: CreateNewBlock() exit\n", GetTimeMillis());
     return pblock;
 }
 
@@ -3641,6 +3644,8 @@ void BitcoinMiner()
     unsigned int nExtraNonce = 0;
     int64 nPrevTime = 0;
 
+    static CBlock* pblock;
+
     while (fGenerateBitcoins)
     {
         if (AffinityBugWorkaround(ThreadBitcoinMiner))
@@ -3663,10 +3668,17 @@ void BitcoinMiner()
         unsigned int nTransactionsUpdatedLast = nTransactionsUpdated;
         CBlockIndex* pindexPrev = pindexBest;
 
-        auto_ptr<CBlock> pblock(CreateNewBlock(reservekey));
-        if (!pblock.get())
-            return;
-        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce, nPrevTime);
+        CBlock* newBlock = CreateNewBlock(reservekey);
+        if (!newBlock)
+        	return;
+        if (newBlock != pblock)
+		{
+        	if (pblock)
+        		delete pblock;
+			pblock = newBlock;
+		}
+
+        IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, nPrevTime);
 
         printf("Running BitcoinMiner with %d transactions in block\n", pblock->vtx.size());
 
@@ -3678,7 +3690,7 @@ void BitcoinMiner()
         char pdatabuf[128+16];    char* pdata     = alignup<16>(pdatabuf);
         char phash1buf[64+16];    char* phash1    = alignup<16>(phash1buf);
 
-        FormatHashBuffers(pblock.get(), pmidstate, pdata, phash1);
+        FormatHashBuffers(pblock, pmidstate, pdata, phash1);
 
         unsigned int& nBlockTime = *(unsigned int*)(pdata + 64 + 4);
         unsigned int& nBlockNonce = *(unsigned int*)(pdata + 64 + 12);
@@ -3718,7 +3730,7 @@ void BitcoinMiner()
                     assert(hash == pblock->GetHash());
 
                     SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    CheckWork(pblock.get(), reservekey);
+                    CheckWork(pblock, reservekey);
                     SetThreadPriority(THREAD_PRIORITY_LOWEST);
                     break;
                 }
