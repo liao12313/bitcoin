@@ -984,6 +984,7 @@ void ReacceptWalletTransactions()
                 fRepeat = true;  // Found missing transactions: re-do Reaccept.
         }
     }
+    ProcessTransactions(true);
 }
 
 
@@ -3306,12 +3307,12 @@ public:
 
 CBlock* pWorkBlock = NULL;
 CCriticalSection work;
-void ProcessTransactions()
+void ProcessTransactions(bool force)
 {
 	static int64 nStart;
 
 	printf("%u: ProcessTransactions() entered\n", GetTimeMillis());
-	if (GetTime() - nStart > 60)
+	if (force || GetTime() - nStart > 60)
 	{
 		printf("%u: ProcessTransactions() elapsed, updating\n", GetTimeMillis());
 		CBlockIndex* pindexPrev = pindexBest;
