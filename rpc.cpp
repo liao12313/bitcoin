@@ -1279,31 +1279,31 @@ Value getwork(const Array& params, bool fHelp)
     if (params.size() == 0)
     {
         // Update block
-        static unsigned int nTransactionsUpdatedLast;
-        static CBlockIndex* pindexPrev;
-        static int64 nStart;
+        static CBlockIndex* pindexPrev = pindexBest;
         static CBlock* pblock;
-        if (pindexPrev != pindexBest ||
-            (nTransactionsUpdated != nTransactionsUpdatedLast && GetTime() - nStart > 60))
-        {
-            if (pindexPrev != pindexBest)
-            {
-                // Deallocate old blocks since they're obsolete now
-                mapNewBlock.clear();
-                foreach(CBlock* pblock, vNewBlock)
-                    delete pblock;
-                vNewBlock.clear();
-            }
-            nTransactionsUpdatedLast = nTransactionsUpdated;
-            pindexPrev = pindexBest;
-            nStart = GetTime();
 
-            // Create new block
-            pblock = CreateNewBlock(reservekey);
-            if (!pblock)
-                throw JSONRPCError(-7, "Out of memory");
-            vNewBlock.push_back(pblock);
-        }
+        printf("%u: getwork() entered\n", GetTimeMillis());
+		if (pindexPrev != pindexBest)
+		{
+			printf("getwork() block changed\n");
+			// Deallocate old blocks since they're obsolete now
+			mapNewBlock.clear();
+			foreach(CBlock* pblock, vNewBlock)
+				delete pblock;
+			vNewBlock.clear();
+			pindexPrev = pindexBest;
+		}
+
+		// Create new block
+		CBlock* newBlock = CreateNewBlock(reservekey);
+		if (!newBlock)
+			throw JSONRPCError(-7, "Out of memory");
+		if (newBlock != pblock)
+		{
+			printf("getwork() new block acquired\n");
+			vNewBlock.push_back(newBlock);
+			pblock = newBlock;
+		}
 
         // Update nTime
         pblock->nTime = max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
@@ -1330,6 +1330,7 @@ Value getwork(const Array& params, bool fHelp)
         result.push_back(Pair("data",     HexStr(BEGIN(pdata), END(pdata))));
         result.push_back(Pair("hash1",    HexStr(BEGIN(phash1), END(phash1))));
         result.push_back(Pair("target",   HexStr(BEGIN(hashTarget), END(hashTarget))));
+        printf("%u: getwork() exit\n", GetTimeMillis());
         return result;
     }
     else
