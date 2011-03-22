@@ -1120,6 +1120,30 @@ public:
         return (vMerkleTree.empty() ? 0 : vMerkleTree.back());
     }
 
+    uint256 UpdateMerkleBranch(int nIndex) const
+	{
+		if (nIndex < -1 || nIndex >= vtx.size())
+			return 0;
+
+		if (vMerkleTree.empty())
+			return BuildMerkleTree();
+
+		uint256 hash = vtx[nIndex].GetHash();
+		int j = 0;
+		for (int nSize = vtx.size(); nSize > 1; nSize = (nSize + 1) / 2)
+		{
+			int i = min(nIndex, nSize-1);
+			int i2 = min(nIndex^1, nSize-1);
+			vMerkleTree[j+i] = hash;
+			hash = Hash(BEGIN(vMerkleTree[j+i]),  END(vMerkleTree[j+i]),
+						BEGIN(vMerkleTree[j+i2]), END(vMerkleTree[j+i2]));
+			nIndex >>= 1;
+			j += nSize;
+		}
+		vMerkleTree.back() = hash;
+		return (vMerkleTree.empty() ? 0 : vMerkleTree.back());
+	}
+
     vector<uint256> GetMerkleBranch(int nIndex) const
     {
         if (vMerkleTree.empty())
