@@ -3485,25 +3485,19 @@ CBlock* CreateNewBlock(CReserveKey& reservekey)
 	static CBlock* pblock;
 	static CBlock* lastWorkBlock;
 
-	printf("%u: CreateNewBlock() entered\n", GetTimeMillis());
     CRITICAL_BLOCK(work)
     {
     	if (!pWorkBlock)
     	{
-    		printf("calling prtx from createblock\n");
     	    ProcessTransactions();
     	}
     	if (!pWorkBlock)
     		return NULL;
 
-    	if (!pblock || lastWorkBlock != pWorkBlock)
+    	if (lastWorkBlock != pWorkBlock)
     	{
     		lastWorkBlock = pWorkBlock;
     		printf("CreateNewBlock() new pWorkBlock, copying\n");
-    		/*if (!pblock)
-    			printf("(pblock == NULL)\n");
-    		else if (pblock->hashMerkleRoot != pWorkBlock->hashMerkleRoot)
-    		    printf("(pblock->hashMerkleRoot != pWorkBlock->hashMerkleRoot)\n");*/
     		// Create new block
 			auto_ptr<CBlock> tempBlock(new CBlock());
 			if (!tempBlock.get())
@@ -3528,7 +3522,6 @@ CBlock* CreateNewBlock(CReserveKey& reservekey)
     	}
     }
 
-    printf("%u: CreateNewBlock() exit\n", GetTimeMillis());
     return pblock;
 }
 
