@@ -1835,13 +1835,14 @@ void ThreadRPCServer2(void* parg)
         map<string, string> mapHeaders;
         string strRequest;
 
-        boost::thread api_caller(ReadHTTP, boost::ref(stream), boost::ref(mapHeaders), boost::ref(strRequest));
-        if (!api_caller.timed_join(boost::posix_time::seconds(GetArg("-rpctimeout", 30))))
-        {   // Timed out:
-            acceptor.cancel();
-            printf("ThreadRPCServer ReadHTTP timeout\n");
-            continue;
-        }
+        //boost::thread api_caller(ReadHTTP, boost::ref(stream), boost::ref(mapHeaders), boost::ref(strRequest));
+        ReadHTTP((std::basic_istream<char>&)stream, mapHeaders, strRequest);
+        //if (!api_caller.timed_join(boost::posix_time::seconds(GetArg("-rpctimeout", 30))))
+        //{   // Timed out:
+        //    acceptor.cancel();
+        //    printf("ThreadRPCServer ReadHTTP timeout\n");
+        //    continue;
+        //}
 
         // Check authorization
         if (mapHeaders.count("Authorization") == 0)
