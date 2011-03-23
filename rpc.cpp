@@ -1282,7 +1282,8 @@ Value getwork(const Array& params, bool fHelp)
         static CBlockIndex* pindexPrev;
         static CBlock* pblock;
 
-        printf("%u: getwork() entered\n", GetTimeMillis());
+        int64 executionTime = GetTimeMillis();
+        bool log = false;
 
 		// Create new block
 		CBlock* newBlock = CreateNewBlock(reservekey);
@@ -1290,6 +1291,7 @@ Value getwork(const Array& params, bool fHelp)
 			throw JSONRPCError(-7, "Out of memory");
 		if (newBlock != pblock)
 		{
+			log = true;
 			if (pindexPrev != pindexBest)
 			{
 				printf("getwork() block changed\n");
@@ -1300,7 +1302,7 @@ Value getwork(const Array& params, bool fHelp)
 				vNewBlock.clear();
 				pindexPrev = pindexBest;
 			}
-			printf("getwork() new block acquired\n");
+			printf("getwork() updated\n");
 			vNewBlock.push_back(newBlock);
 			pblock = newBlock;
 		}
@@ -1330,7 +1332,8 @@ Value getwork(const Array& params, bool fHelp)
         result.push_back(Pair("data",     HexStr(BEGIN(pdata), END(pdata))));
         result.push_back(Pair("hash1",    HexStr(BEGIN(phash1), END(phash1))));
         result.push_back(Pair("target",   HexStr(BEGIN(hashTarget), END(hashTarget))));
-        printf("%u: getwork() exit\n", GetTimeMillis());
+        if (log)
+        	printf("getwork() %u\n", GetTimeMillis() - executionTime);
         return result;
     }
     else

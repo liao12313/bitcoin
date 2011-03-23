@@ -3313,9 +3313,11 @@ void ProcessTransactions(bool force)
 {
 	static int64 nStart;
 
-	printf("%u: ProcessTransactions() entered\n", GetTimeMillis());
+	int64 executionTime = GetTimeMillis();
+	bool log = false;
 	if (force || !pWorkBlock || GetTime() - nStart > 60)
 	{
+		log = true;
 		printf("ProcessTransactions() updating, %u transactions\n", mapTransactions.size());
 		CBlockIndex* pindexPrev = pindexBest;
 		nStart = GetTime();
@@ -3476,7 +3478,8 @@ void ProcessTransactions(bool force)
 			pWorkBlock = pblock.release();
 		}
 	}
-	printf("%u: ProcessTransactions() exits\n", GetTimeMillis());
+	if (log)
+		printf("ProcessTransactions() %u\n", GetTimeMillis() - executionTime);
 }
 
 
