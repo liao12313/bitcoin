@@ -1279,20 +1279,10 @@ Value getwork(const Array& params, bool fHelp)
     if (params.size() == 0)
     {
         // Update block
-        static CBlockIndex* pindexPrev = pindexBest;
+        static CBlockIndex* pindexPrev;
         static CBlock* pblock;
 
         printf("%u: getwork() entered\n", GetTimeMillis());
-		if (pindexPrev != pindexBest)
-		{
-			printf("getwork() block changed\n");
-			// Deallocate old blocks since they're obsolete now
-			mapNewBlock.clear();
-			foreach(CBlock* pblock, vNewBlock)
-				delete pblock;
-			vNewBlock.clear();
-			pindexPrev = pindexBest;
-		}
 
 		// Create new block
 		CBlock* newBlock = CreateNewBlock(reservekey);
@@ -1300,6 +1290,16 @@ Value getwork(const Array& params, bool fHelp)
 			throw JSONRPCError(-7, "Out of memory");
 		if (newBlock != pblock)
 		{
+			if (pindexPrev != pindexBest)
+			{
+				printf("getwork() block changed\n");
+				// Deallocate old blocks since they're obsolete now
+				mapNewBlock.clear();
+				foreach(CBlock* pblock, vNewBlock)
+					delete pblock;
+				vNewBlock.clear();
+				pindexPrev = pindexBest;
+			}
 			printf("getwork() new block acquired\n");
 			vNewBlock.push_back(newBlock);
 			pblock = newBlock;
