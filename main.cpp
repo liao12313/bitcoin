@@ -800,7 +800,6 @@ bool CTransaction::AddToMemoryPoolUnchecked()
         for (int i = 0; i < vin.size(); i++)
             mapNextTx[vin[i].prevout] = CInPoint(&mapTransactions[hash], i);
         nTransactionsUpdated++;
-        printf("calling prtx from addtomempoolunch\n");
         ProcessTransactions();
     }
     return true;
@@ -984,7 +983,6 @@ void ReacceptWalletTransactions()
                 fRepeat = true;  // Found missing transactions: re-do Reaccept.
         }
     }
-    printf("calling prtx from reaccept\n");
     ProcessTransactions(true);
 }
 
@@ -1614,7 +1612,6 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     bnBestChainWork = pindexNew->bnChainWork;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
-    printf("calling prtx from setbestchain\n");
     ProcessTransactions(true);
     printf("SetBestChain: new best=%s  height=%d  work=%s\n", hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainWork.ToString().c_str());
 
