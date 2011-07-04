@@ -2684,10 +2684,6 @@ void ProcessTransactions(bool force)
     CBlockIndex* pindexPrev = pindexBest;
 	static int64 nStart;
 
-    // Create new block
-    auto_ptr<CBlock> pblock(new CBlock());
-    if (!pblock.get())
-        return NULL;
 	int64 executionTime = GetTimeMillis();
 	bool log = false;
 	if (force || !pWorkBlock || GetTime() - nStart > 60)
@@ -2697,12 +2693,6 @@ void ProcessTransactions(bool force)
 		CBlockIndex* pindexPrev = pindexBest;
 		nStart = GetTime();
 
-    // Create coinbase tx
-    CTransaction txNew;
-    txNew.vin.resize(1);
-    txNew.vin[0].prevout.SetNull();
-    txNew.vout.resize(1);
-    txNew.vout[0].scriptPubKey << reservekey.GetReservedKey() << OP_CHECKSIG;
 		// Create new block
 		auto_ptr<CBlock> pblock(new CBlock());
 		if (!pblock.get())
@@ -2718,13 +2708,14 @@ void ProcessTransactions(bool force)
 			return;
 		}
 
-    // Add our coinbase tx as first transaction
-    pblock->vtx.push_back(txNew);
 		// Create coinbase tx
 		CTransaction txNew;
 		txNew.vin.resize(1);
 		txNew.vin[0].prevout.SetNull();
 		txNew.vout.resize(1);
+
+         // Add our coinbase tx as first transaction
+    pblock->vtx.push_back(txNew);
 
     // Collect memory pool transactions into the block
     int64 nFees = 0;
@@ -2732,8 +2723,6 @@ void ProcessTransactions(bool force)
     CRITICAL_BLOCK(cs_mapTransactions)
     {
         CTxDB txdb("r");
-		// Add our coinbase tx as first transaction
-		pblock->vtx.push_back(txNew);
 
         // Priority order to process transactions
         list<COrphan> vOrphan; // list memory doesn't move
@@ -2744,12 +2733,6 @@ void ProcessTransactions(bool force)
             CTransaction& tx = (*mi).second;
             if (tx.IsCoinBase() || !tx.IsFinal())
                 continue;
-		// Collect memory pool transactions into the block
-		int64 nFees = 0;
-		CRITICAL_BLOCK(cs_main)
-		CRITICAL_BLOCK(cs_mapTransactions)
-		{
-			CTxDB txdb("r");
 
             COrphan* porphan = NULL;
             double dPriority = 0;
@@ -2772,73 +2755,23 @@ void ProcessTransactions(bool force)
                     continue;
                 }
                 int64 nValueIn = txPrev.vout[txin.prevout.n].nValue;
-			// Priority order to process transactions
-			list<COrphan> vOrphan; // list memory doesn't move
-			map<uint256, vector<COrphan*> > mapDependers;
-			multimap<double, CTransaction*> mapPriority;
-			for (map<uint256, CTransaction>::iterator mi = mapTransactions.begin(); mi != mapTransactions.end(); ++mi)
-			{
-				CTransaction& tx = (*mi).second;
-				if (tx.IsCoinBase() || !tx.IsFinal())
-					continue;
-
-
-
-
-
-
-
-
-
-
-
-
 
                 // Read block header
                 int nConf = txindex.GetDepthInMainChain();
-				COrphan* porphan = NULL;
-				double dPriority = 0;
-				BOOST_FOREACH(const CTxIn& txin, tx.vin)
-				{
-					// Read prev transaction
-					CTransaction txPrev;
-					CTxIndex txindex;
-					if (!txPrev.ReadFromDisk(txdb, txin.prevout, txindex))
-					{
-						// Has to wait for dependencies
-						if (!porphan)
-						{
-							// Use list for automatic deletion
-							vOrphan.push_back(COrphan(&tx));
-							porphan = &vOrphan.back();
-						}
-						mapDependers[txin.prevout.hash].push_back(porphan);
-						porphan->setDependsOn.insert(txin.prevout.hash);
-						continue;
-					}
-					int64 nValueIn = txPrev.vout[txin.prevout.n].nValue;
 
                 dPriority += (double)nValueIn * nConf;
-					// Read block header
-					int nConf = txindex.GetDepthInMainChain();
 
                 if (fDebug && GetBoolArg("-printpriority"))
                     printf("priority     nValueIn=%-12I64d nConf=%-5d dPriority=%-20.1f\n", nValueIn, nConf, dPriority);
             }
-					dPriority += (double)nValueIn * nConf;
 
             // Priority is sum(valuein * age) / txsize
             dPriority /= ::GetSerializeSize(tx, SER_NETWORK);
-					if (fDebug && GetBoolArg("-printpriority"))
-						printf("priority     nValueIn=%-12I64d nConf=%-5d dPriority=%-20.1f\n", nValueIn, nConf, dPriority);
-				}
 
             if (porphan)
                 porphan->dPriority = dPriority;
             else
                 mapPriority.insert(make_pair(-dPriority, &(*mi).second));
-				// Priority is sum(valuein * age) / txsize
-				dPriority /= ::GetSerializeSize(tx, SER_NETWORK);
 
             if (fDebug && GetBoolArg("-printpriority"))
             {
@@ -2848,10 +2781,6 @@ void ProcessTransactions(bool force)
                 printf("\n");
             }
         }
-				if (porphan)
-					porphan->dPriority = dPriority;
-				else
-					mapPriority.insert(make_pair(-dPriority, &(*mi).second));
 
         // Collect transactions into block
         map<uint256, CTxIndex> mapTestPool;
@@ -2863,14 +2792,6 @@ void ProcessTransactions(bool force)
             double dPriority = -(*mapPriority.begin()).first;
             CTransaction& tx = *(*mapPriority.begin()).second;
             mapPriority.erase(mapPriority.begin());
-				if (fDebug && GetBoolArg("-printpriority"))
-				{
-					printf("priority %-20.1f %s\n%s", dPriority, tx.GetHash().ToString().substr(0,10).c_str(), tx.ToString().c_str());
-					if (porphan)
-						porphan->print();
-					printf("\n");
-				}
-			}
 
             // Size limits
             unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK);
@@ -2879,27 +2800,10 @@ void ProcessTransactions(bool force)
             int nTxSigOps = tx.GetSigOpCount();
             if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS)
                 continue;
-			// Collect transactions into block
-			map<uint256, CTxIndex> mapTestPool;
-			uint64 nBlockSize = 1000;
-			int nBlockSigOps = 100;
-			while (!mapPriority.empty())
-			{
-				// Take highest priority transaction off priority queue
-				double dPriority = -(*mapPriority.begin()).first;
-				CTransaction& tx = *(*mapPriority.begin()).second;
-				mapPriority.erase(mapPriority.begin());
 
             // Transaction fee required depends on block size
             bool fAllowFree = (nBlockSize + nTxSize < 4000 || CTransaction::AllowFree(dPriority));
             int64 nMinFee = tx.GetMinFee(nBlockSize, fAllowFree, true);
-				// Size limits
-				unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK);
-				if (nBlockSize + nTxSize >= MAX_BLOCK_SIZE_GEN)
-					continue;
-				int nTxSigOps = tx.GetSigOpCount();
-				if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS)
-					continue;
 
             // Connecting shouldn't fail due to dependency on other memory pool transactions
             // because we're already processing them in order of dependency
@@ -2907,20 +2811,11 @@ void ProcessTransactions(bool force)
             if (!tx.ConnectInputs(txdb, mapTestPoolTmp, CDiskTxPos(1,1,1), pindexPrev, nFees, false, true, nMinFee))
                 continue;
             swap(mapTestPool, mapTestPoolTmp);
-				// Transaction fee required depends on block size
-				bool fAllowFree = (nBlockSize + nTxSize < 4000 || CTransaction::AllowFree(dPriority));
-				int64 nMinFee = tx.GetMinFee(nBlockSize, fAllowFree);
 
             // Added
             pblock->vtx.push_back(tx);
             nBlockSize += nTxSize;
             nBlockSigOps += nTxSigOps;
-				// Connecting shouldn't fail due to dependency on other memory pool transactions
-				// because we're already processing them in order of dependency
-				map<uint256, CTxIndex> mapTestPoolTmp(mapTestPool);
-				if (!tx.ConnectInputs(txdb, mapTestPoolTmp, CDiskTxPos(1,1,1), pindexPrev, nFees, false, true, nMinFee))
-					continue;
-				swap(mapTestPool, mapTestPoolTmp);
 
             // Add transactions that depend on this one to the priority queue
             uint256 hash = tx.GetHash();
@@ -2939,23 +2834,6 @@ void ProcessTransactions(bool force)
         }
     }
     pblock->vtx[0].vout[0].nValue = GetBlockValue(pindexPrev->nHeight+1, nFees);
-				// Added
-				pblock->vtx.push_back(tx);
-				nBlockSize += nTxSize;
-				nBlockSigOps += nTxSigOps;
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
@@ -2963,31 +2841,6 @@ void ProcessTransactions(bool force)
     pblock->nTime          = max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
     pblock->nBits          = GetNextWorkRequired(pindexPrev);
     pblock->nNonce         = 0;
-				// Add transactions that depend on this one to the priority queue
-				uint256 hash = tx.GetHash();
-				if (mapDependers.count(hash))
-				{
-					BOOST_FOREACH(COrphan* porphan, mapDependers[hash])
-					{
-						if (!porphan->setDependsOn.empty())
-						{
-							porphan->setDependsOn.erase(hash);
-							if (porphan->setDependsOn.empty())
-								mapPriority.insert(make_pair(-porphan->dPriority, porphan->ptx));
-						}
-					}
-				}
-			}
-		}
-		pblock->vtx[0].vout[0].nValue = GetBlockValue(pindexPrev->nHeight+1, nFees);
-
-    return pblock.release();
-		// Fill in header
-		pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
-		pblock->hashMerkleRoot = pblock->BuildMerkleTree();
-		pblock->nTime          = max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
-		pblock->nBits          = GetNextWorkRequired(pindexPrev);
-		pblock->nNonce         = 0;
 
 		CRITICAL_BLOCK(work)
 		{
@@ -3048,16 +2901,16 @@ CBlock* CreateNewBlock(CReserveKey& reservekey)
 
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce, int64& nPrevTime)
-{
-    // Update nExtraNonce
+{	
+	// Update nExtraNonce
     int64 nNow = max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
-    if (++nExtraNonce >= 0x7f && nNow > nPrevTime+1)
+    if (++nExtraNonce >= 0xFFFFF && nNow > nPrevTime+1)
     {
         nExtraNonce = 1;
         nPrevTime = nNow;
     }
     pblock->vtx[0].vin[0].scriptSig = CScript() << pblock->nBits << CBigNum(nExtraNonce);
-    pblock->hashMerkleRoot = pblock->BuildMerkleTree();
+    pblock->hashMerkleRoot = pblock->UpdateMerkleBranch(0);
 }
 
 
@@ -3146,13 +2999,10 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
 
 void static ThreadBitcoinMiner(void* parg);
 
-void BitcoinMiner()
+void static BitcoinMiner(CWallet *pwallet)
 {
     printf("BitcoinMiner started\n");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
-    bool f4WaySSE2 = Detect128BitSSE2();
-    if (mapArgs.count("-4way"))
-        f4WaySSE2 = GetBoolArg("-4way");
 
     // Each thread has its own key and counter
     CReserveKey reservekey(pwallet);
@@ -3182,11 +3032,6 @@ void BitcoinMiner()
         //
         unsigned int nTransactionsUpdatedLast = nTransactionsUpdated;
         CBlockIndex* pindexPrev = pindexBest;
-
-        auto_ptr<CBlock> pblock(CreateNewBlock(reservekey));
-        if (!pblock.get())
-            return;
-        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce, nPrevTime);
         CBlock* newBlock = CreateNewBlock(reservekey);
         if (!newBlock)
         	return;
@@ -3209,7 +3054,6 @@ void BitcoinMiner()
         char pdatabuf[128+16];    char* pdata     = alignup<16>(pdatabuf);
         char phash1buf[64+16];    char* phash1    = alignup<16>(phash1buf);
 
-        FormatHashBuffers(pblock.get(), pmidstate, pdata, phash1);
         FormatHashBuffers(pblock, pmidstate, pdata, phash1);
 
         unsigned int& nBlockTime = *(unsigned int*)(pdata + 64 + 4);
@@ -3228,14 +3072,9 @@ void BitcoinMiner()
             unsigned int nHashesDone = 0;
             unsigned int nNonceFound;
 
-#ifdef FOURWAYSSE2
-            if (f4WaySSE2)
-                // tcatm's 4-way 128-bit SSE2 SHA-256
-                nNonceFound = ScanHash_4WaySSE2(pmidstate, pdata + 64, phash1, (char*)&hash, nHashesDone);
-            else
-#endif
-                // Crypto++ SHA-256
-                nNonceFound = ScanHash_CryptoPP(pmidstate, pdata + 64, phash1, (char*)&hash, nHashesDone);
+            // Crypto++ SHA-256
+            nNonceFound = ScanHash_CryptoPP(pmidstate, pdata + 64, phash1,
+                                            (char*)&hash, nHashesDone);
 
             // Check if something found
             if (nNonceFound != -1)

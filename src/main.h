@@ -877,8 +877,8 @@ public:
 		int j = 0;
 		for (int nSize = vtx.size(); nSize > 1; nSize = (nSize + 1) / 2)
 		{
-			int i = min(nIndex, nSize-1);
-			int i2 = min(nIndex^1, nSize-1);
+			int i = std::min(nIndex, nSize-1);
+			int i2 = std::min(nIndex^1, nSize-1);
 			vMerkleTree[j+i] = hash;
 			hash = Hash(BEGIN(vMerkleTree[j+i]),  END(vMerkleTree[j+i]),
 						BEGIN(vMerkleTree[j+i2]), END(vMerkleTree[j+i2]));

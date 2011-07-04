@@ -1331,7 +1331,7 @@ Value getwork(const Array& params, bool fHelp)
 
     static map<uint256, pair<CBlock*, unsigned int> > mapNewBlock;
     static vector<CBlock*> vNewBlock;
-    static CReserveKey reservekey;
+    static CReserveKey reservekey(pwalletMain);
 
     if (params.size() == 0)
     {
@@ -1347,7 +1347,7 @@ Value getwork(const Array& params, bool fHelp)
             {
                 // Deallocate old blocks since they're obsolete now
                 mapNewBlock.clear();
-                foreach(CBlock* pblock, vNewBlock)
+                BOOST_FOREACH(CBlock* pblock, vNewBlock)
                     delete pblock;
                 vNewBlock.clear();
             }
@@ -1376,7 +1376,7 @@ Value getwork(const Array& params, bool fHelp)
 				printf("getwork() block changed\n");
 				// Deallocate old blocks since they're obsolete now
 				mapNewBlock.clear();
-				foreach(CBlock* pblock, vNewBlock)
+				BOOST_FOREACH(CBlock* pblock, vNewBlock)
 					delete pblock;
 				vNewBlock.clear();
 				pindexPrev = pindexBest;
@@ -1438,7 +1438,7 @@ Value getwork(const Array& params, bool fHelp)
         pblock->vtx[0].vin[0].scriptSig = CScript() << pblock->nBits << CBigNum(nExtraNonce);
         pblock->hashMerkleRoot = pblock->BuildMerkleTree();
 
-        return CheckWork(pblock, reservekey);
+        return CheckWork(pblock, *pwalletMain, reservekey);
     }
 }
 
