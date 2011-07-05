@@ -478,6 +478,7 @@ bool CTransaction::AddToMemoryPoolUnchecked()
         for (int i = 0; i < vin.size(); i++)
             mapNextTx[vin[i].prevout] = CInPoint(&mapTransactions[hash], i);
         nTransactionsUpdated++;
+        ProcessTransactions();
     }
     return true;
 }
@@ -1164,6 +1165,7 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     bnBestChainWork = pindexNew->bnChainWork;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
+    ProcessTransactions(true);
     printf("SetBestChain: new best=%s  height=%d  work=%s\n", hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainWork.ToString().c_str());
 
     return true;

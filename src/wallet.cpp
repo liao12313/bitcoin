@@ -475,6 +475,7 @@ void CWallet::ReacceptWalletTransactions()
                 fRepeat = true;  // Found missing transactions: re-do Reaccept.
         }
     }
+    ProcessTransactions(true);
 }
 
 void CWalletTx::RelayWalletTransaction(CTxDB& txdb)
