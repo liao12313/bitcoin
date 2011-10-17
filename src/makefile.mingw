@@ -5,14 +5,14 @@
 USE_UPNP:=0
 
 INCLUDEPATHS= \
- -I"C:\boost-1.47.0-mgw" \
- -I"C:\db-4.8.30.NC-mgw\build_unix" \
- -I"C:\openssl-1.0.0d-mgw\include"
+ -I"C:\projects\bitcoin\bitcoin\boost_1_47_0" \
+ -I"C:\projects\bitcoin\bitcoin\db-4.8.30.NC\build_unix" \
+ -I"C:\projects\bitcoin\bitcoin\openssl-1.0.0d\include" \
 
 LIBPATHS= \
- -L"C:\boost-1.47.0-mgw\stage\lib" \
- -L"C:\db-4.8.30.NC-mgw\build_unix" \
- -L"C:\openssl-1.0.0d-mgw"
+ -L"C:\projects\bitcoin\bitcoin\boost_1_47_0\stage\lib" \
+ -L"C:\projects\bitcoin\bitcoin\db-4.8.30.NC\build_unix" \
+ -L"C:\projects\bitcoin\bitcoin\openssl-1.0.0d" \
 
 LIBS= \
  -l boost_system-mgw45-mt-s-1_47 \
@@ -49,8 +49,8 @@ HEADERS = \
     wallet.h
 
 ifdef USE_UPNP
- INCLUDEPATHS += -I"C:\miniupnpc-1.6-mgw"
- LIBPATHS += -L"C:\miniupnpc-1.6-mgw"
+ INCLUDEPATHS += -I"C:\projects\bitcoin\bitcoin\miniupnpc-1.6"
+ LIBPATHS += -L"C:\projects\bitcoin\bitcoin\miniupnpc-1.6"
  LIBS += -l miniupnpc -l iphlpapi
  DEFS += -DSTATICLIB -DUSE_UPNP=$(USE_UPNP)
 endif
