@@ -5,6 +5,7 @@
 #include "transactiontablemodel.h"
 
 #include "headers.h"
+#include "db.h" // for BackupWallet
 
 #include <QTimer>
 #include <QSet>
@@ -200,7 +201,7 @@ WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
     }
 }
 
-bool WalletModel::setWalletEncrypted(bool encrypted, const std::string &passphrase)
+bool WalletModel::setWalletEncrypted(bool encrypted, const SecureString &passphrase)
 {
     if(encrypted)
     {
@@ -214,7 +215,7 @@ bool WalletModel::setWalletEncrypted(bool encrypted, const std::string &passphra
     }
 }
 
-bool WalletModel::setWalletLocked(bool locked, const std::string &passPhrase)
+bool WalletModel::setWalletLocked(bool locked, const SecureString &passPhrase)
 {
     if(locked)
     {
@@ -228,7 +229,7 @@ bool WalletModel::setWalletLocked(bool locked, const std::string &passPhrase)
     }
 }
 
-bool WalletModel::changePassphrase(const std::string &oldPass, const std::string &newPass)
+bool WalletModel::changePassphrase(const SecureString &oldPass, const SecureString &newPass)
 {
     bool retval;
     CRITICAL_BLOCK(wallet->cs_wallet)
@@ -237,6 +238,11 @@ bool WalletModel::changePassphrase(const std::string &oldPass, const std::string
         retval = wallet->ChangeWalletPassphrase(oldPass, newPass);
     }
     return retval;
+}
+
+bool WalletModel::backupWallet(const QString &filename)
+{
+    return BackupWallet(*wallet, filename.toLocal8Bit().data());
 }
 
 // WalletModel::UnlockContext implementation
