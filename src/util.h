@@ -11,6 +11,8 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#else
+typedef int pid_t; /* define for windows compatiblity */
 #endif
 #include <map>
 #include <vector>
@@ -93,13 +95,6 @@ inline void Sleep(int64 n)
 }
 #endif
 
-#if !defined(QT_GUI)
-inline const char* _(const char* psz)
-{
-    return psz;
-}
-#endif
-
 
 
 
@@ -128,8 +123,15 @@ void RandAddSeed();
 void RandAddSeedPerfmon();
 int OutputDebugStringF(const char* pszFormat, ...);
 int my_snprintf(char* buffer, size_t limit, const char* format, ...);
-std::string strprintf(const std::string &format, ...);
-bool error(const std::string &format, ...);
+
+/* It is not allowed to use va_start with a pass-by-reference argument.
+   (C++ standard, 18.7, paragraph 3). Use a dummy argument to work around this, and use a
+   macro to keep similar semantics.
+*/
+std::string real_strprintf(const std::string &format, int dummy, ...);
+#define strprintf(format, ...) real_strprintf(format, 0, __VA_ARGS__)
+
+bool error(const char *format, ...);
 void LogException(std::exception* pex, const char* pszThread);
 void PrintException(std::exception* pex, const char* pszThread);
 void PrintExceptionContinue(std::exception* pex, const char* pszThread);
@@ -254,16 +256,6 @@ public:
 
 #define TRY_CRITICAL_BLOCK(cs)     \
     if (CTryCriticalBlock criticalblock = CTryCriticalBlock(cs, #cs, __FILE__, __LINE__))
-
-
-
-
-
-
-// This is exactly like std::string, but with a custom allocator.
-// (secure_allocator<> is defined in serialize.h)
-typedef std::basic_string<char, std::char_traits<char>, secure_allocator<char> > SecureString;
-
 
 
 
