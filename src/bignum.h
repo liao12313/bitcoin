@@ -9,7 +9,7 @@
 #include <vector>
 #include <openssl/bn.h>
 
-#include "util.h"
+#include "util.h" // for uint64
 
 /** Errors thrown by the bignum class */
 class bignum_error : public std::runtime_error
@@ -301,7 +301,7 @@ public:
         while (isxdigit(*psz))
         {
             *this <<= 4;
-            int n = phexdigit[*psz++];
+            int n = phexdigit[(unsigned char)*psz++];
             *this += n;
         }
         if (fNegative)

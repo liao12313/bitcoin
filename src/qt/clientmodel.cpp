@@ -4,7 +4,7 @@
 #include "addresstablemodel.h"
 #include "transactiontablemodel.h"
 
-#include "headers.h"
+#include "main.h"
 
 #include <QDateTime>
 
@@ -87,4 +87,9 @@ OptionsModel *ClientModel::getOptionsModel()
 QString ClientModel::formatFullVersion() const
 {
     return QString::fromStdString(FormatFullVersion());
+}
+
+QString ClientModel::formatBuildDate() const
+{
+    return QString::fromStdString(CLIENT_DATE);
 }

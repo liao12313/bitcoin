@@ -2,8 +2,8 @@
 #include "bitcoinunits.h"
 #include <QSettings>
 
-#include "headers.h"
 #include "init.h"
+#include "walletdb.h"
 
 OptionsModel::OptionsModel(QObject *parent) :
     QAbstractListModel(parent)
@@ -198,10 +198,12 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             settings.setValue("nDisplayUnit", nDisplayUnit);
             emit displayUnitChanged(unit);
             }
+            break;
         case DisplayAddresses: {
             bDisplayAddresses = value.toBool();
             settings.setValue("bDisplayAddresses", bDisplayAddresses);
             }
+            break;
         default:
             break;
         }

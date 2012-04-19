@@ -7,8 +7,8 @@
 #include "optionsmodel.h"
 #include "guiutil.h"
 
-#include "headers.h"
 #include "init.h"
+#include "ui_interface.h"
 #include "qtipcserver.h"
 
 #include <QApplication>
@@ -74,13 +74,13 @@ bool ThreadSafeAskFee(int64 nFeeRequired, const std::string& strCaption)
     return payFee;
 }
 
-void ThreadSafeHandleURL(const std::string& strURL)
+void ThreadSafeHandleURI(const std::string& strURI)
 {
     if(!guiref)
         return;
 
-    QMetaObject::invokeMethod(guiref, "handleURL", GUIUtil::blockingGUIThreadConnection(),
-                               Q_ARG(QString, QString::fromStdString(strURL)));
+    QMetaObject::invokeMethod(guiref, "handleURI", GUIUtil::blockingGUIThreadConnection(),
+                               Q_ARG(QString, QString::fromStdString(strURI)));
 }
 
 void MainFrameRepaint()
@@ -119,6 +119,15 @@ std::string _(const char* psz)
     return QCoreApplication::translate("bitcoin-core", psz).toStdString();
 }
 
+/* Handle runaway exceptions. Shows a message box with the problem and quits the program.
+ */
+static void handleRunawayException(std::exception *e)
+{
+    PrintExceptionContinue(e, "Runaway exception");
+    QMessageBox::critical(0, "Runaway exception", BitcoinGUI::tr("A fatal error occured. Bitcoin can no longer continue safely and will quit.") + QString("\n\n") + QString::fromStdString(strMiscWarning));
+    exit(1);
+}
+
 #ifdef WIN32
 #define strncasecmp strnicmp
 #endif
@@ -133,10 +142,10 @@ int main(int argc, char *argv[])
     {
         if (strlen(argv[i]) > 7 && strncasecmp(argv[i], "bitcoin:", 8) == 0)
         {
-            const char *strURL = argv[i];
+            const char *strURI = argv[i];
             try {
-                boost::interprocess::message_queue mq(boost::interprocess::open_only, "BitcoinURL");
-                if(mq.try_send(strURL, strlen(strURL), 0))
+                boost::interprocess::message_queue mq(boost::interprocess::open_only, BITCOINURI_QUEUE_NAME);
+                if(mq.try_send(strURI, strlen(strURI), 0))
                     exit(0);
                 else
                     break;
@@ -248,21 +257,21 @@ int main(int argc, char *argv[])
                     window.show();
                 }
 
-                // Place this here as guiref has to be defined if we dont want to lose URLs
+                // Place this here as guiref has to be defined if we dont want to lose URIs
                 ipcInit();
 
 #if !defined(MAC_OSX) && !defined(WIN32)
 // TODO: implement qtipcserver.cpp for Mac and Windows
 
-                // Check for URL in argv
+                // Check for URI in argv
                 for (int i = 1; i < argc; i++)
                 {
                     if (strlen(argv[i]) > 7 && strncasecmp(argv[i], "bitcoin:", 8) == 0)
                     {
-                        const char *strURL = argv[i];
+                        const char *strURI = argv[i];
                         try {
-                            boost::interprocess::message_queue mq(boost::interprocess::open_only, "BitcoinURL");
-                            mq.try_send(strURL, strlen(strURL), 0);
+                            boost::interprocess::message_queue mq(boost::interprocess::open_only, BITCOINURI_QUEUE_NAME);
+                            mq.try_send(strURI, strlen(strURI), 0);
                         }
                         catch (boost::interprocess::interprocess_exception &ex) {
                         }
@@ -284,9 +293,9 @@ int main(int argc, char *argv[])
             return 1;
         }
     } catch (std::exception& e) {
-        PrintException(&e, "Runaway exception");
+        handleRunawayException(&e);
     } catch (...) {
-        PrintException(NULL, "Runaway exception");
+        handleRunawayException(NULL);
     }
     return 0;
 }

@@ -23,7 +23,7 @@ LIBS= \
  -l ssl \
  -l crypto
 
-DEFS=-DWIN32 -D_WINDOWS -DNOPCH -DUSE_SSL -DBOOST_THREAD_USE_LIB
+DEFS=-DWIN32 -D_WINDOWS -DNOPCH -DBOOST_THREAD_USE_LIB
 DEBUGFLAGS=-g
 CFLAGS=-mthreads -O2 -w -Wno-invalid-offsetof -Wformat $(DEBUGFLAGS) $(DEFS) $(INCLUDEPATHS)
 
@@ -41,6 +41,7 @@ LIBS += -l kernel32 -l user32 -l gdi32 -l comdlg32 -l winspool -l winmm -l shell
 HEADERS = $(wildcard *.h)
 
 OBJS= \
+    obj/version.o \
     obj/checkpoints.o \
     obj/netbase.o \
     obj/addrman.o \
@@ -58,6 +59,7 @@ OBJS= \
     obj/script.o \
     obj/util.o \
     obj/wallet.o \
+    obj/walletdb.o \
     obj/noui.o
 
 
@@ -82,3 +84,4 @@ clean:
 	-del /Q obj\test\*
 	-del /Q test\*.o
 	-del /Q headers.h.gch
+	-del /Q build.h
