@@ -162,7 +162,7 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific = true);
 boost::filesystem::path GetConfigFile();
 boost::filesystem::path GetPidFile();
 void CreatePidFile(const boost::filesystem::path &path, pid_t pid);
-bool ReadConfigFile(std::map<std::string, std::string>& mapSettingsRet, std::map<std::string, std::vector<std::string> >& mapMultiSettingsRet);
+void ReadConfigFile(std::map<std::string, std::string>& mapSettingsRet, std::map<std::string, std::vector<std::string> >& mapMultiSettingsRet);
 bool GetStartOnSystemStartup();
 bool SetStartOnSystemStartup(bool fAutoStart);
 void ShrinkDebugFile();
@@ -302,14 +302,6 @@ typedef boost::interprocess::interprocess_condition CConditionVariable;
     }
 
 
-// This is exactly like std::string, but with a custom allocator.
-// (secure_allocator<> is defined in serialize.h)
-typedef std::basic_string<char, std::char_traits<char>, secure_allocator<char> > SecureString;
-
-
-
-
-
 inline std::string i64tostr(int64 n)
 {
     return strprintf("%"PRI64d, n);
@@ -361,15 +353,20 @@ inline int64 abs64(int64 n)
 template<typename T>
 std::string HexStr(const T itbegin, const T itend, bool fSpaces=false)
 {
-    if (itbegin == itend)
-        return "";
-    const unsigned char* pbegin = (const unsigned char*)&itbegin[0];
-    const unsigned char* pend = pbegin + (itend - itbegin) * sizeof(itbegin[0]);
-    std::string str;
-    str.reserve((pend-pbegin) * (fSpaces ? 3 : 2));
-    for (const unsigned char* p = pbegin; p != pend; p++)
-        str += strprintf((fSpaces && p != pend-1 ? "%02x " : "%02x"), *p);
-    return str;
+    std::vector<char> rv;
+    static char hexmap[16] = { '0', '1', '2', '3', '4', '5', '6', '7',
+                               '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+    rv.reserve((itend-itbegin)*3);
+    for(T it = itbegin; it < itend; ++it)
+    {
+        unsigned char val = (unsigned char)(*it);
+        if(fSpaces && it != itbegin)
+            rv.push_back(' ');
+        rv.push_back(hexmap[val>>4]);
+        rv.push_back(hexmap[val&15]);
+    }
+
+    return std::string(rv.begin(), rv.end());
 }
 
 inline std::string HexStr(const std::vector<unsigned char>& vch, bool fSpaces=false)
@@ -574,9 +571,9 @@ template <typename T> class CMedianFilter
 private:
     std::vector<T> vValues;
     std::vector<T> vSorted;
-    int nSize;
+    unsigned int nSize;
 public:
-    CMedianFilter(int size, T initial_value):
+    CMedianFilter(unsigned int size, T initial_value):
         nSize(size)
     {
         vValues.reserve(size);

@@ -227,7 +227,6 @@ public:
     void SetBestChain(const CBlockLocator& loc);
 
     int LoadWallet(bool& fFirstRunRet);
-//    bool BackupWallet(const std::string& strDest);
 
     bool SetAddressBookName(const CBitcoinAddress& address, const std::string& strName);
 
@@ -317,19 +316,14 @@ public:
     std::vector<char> vfSpent; // which outputs are already spent
 
     // memory only
-    mutable char fDebitCached;
-    mutable char fCreditCached;
-    mutable char fAvailableCreditCached;
-    mutable char fChangeCached;
+    mutable bool fDebitCached;
+    mutable bool fCreditCached;
+    mutable bool fAvailableCreditCached;
+    mutable bool fChangeCached;
     mutable int64 nDebitCached;
     mutable int64 nCreditCached;
     mutable int64 nAvailableCreditCached;
     mutable int64 nChangeCached;
-
-    // memory only UI hints
-    mutable unsigned int nTimeDisplayed;
-    mutable int nLinesDisplayed;
-    mutable char fConfirmedDisplayed;
 
     CWalletTx()
     {
@@ -370,9 +364,6 @@ public:
         nCreditCached = 0;
         nAvailableCreditCached = 0;
         nChangeCached = 0;
-        nTimeDisplayed = 0;
-        nLinesDisplayed = 0;
-        fConfirmedDisplayed = false;
     }
 
     IMPLEMENT_SERIALIZE
