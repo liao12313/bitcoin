@@ -10,7 +10,7 @@
 #include "main.h"
 #include "wallet.h"
 #include "init.h"
-#include "util.h"
+#include "base58.h"
 
 #include "messagepage.h"
 #include "ui_messagepage.h"
@@ -25,7 +25,16 @@ MessagePage::MessagePage(QWidget *parent) :
 {
     ui->setupUi(this);
 
+#if (QT_VERSION >= 0x040700)
+    /* Do not move this to the XML file, Qt before 4.7 will choke on it */
+    ui->signFrom->setPlaceholderText(tr("Enter a Bitcoin address (e.g. 1NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L)"));
+    ui->signature->setPlaceholderText(tr("Click \"Sign Message\" to get signature"));
+#endif
+
     GUIUtil::setupAddressWidget(ui->signFrom, this);
+    ui->signature->installEventFilter(this);
+
+    ui->signFrom->setFocus();
 }
 
 MessagePage::~MessagePage()
@@ -75,6 +84,13 @@ void MessagePage::on_signMessage_clicked()
                               QMessageBox::Abort, QMessageBox::Abort);
         return;
     }
+    CKeyID keyID;
+    if (!addr.GetKeyID(keyID))
+    {
+        QMessageBox::critical(this, tr("Error signing"), tr("%1 does not refer to a key.").arg(address),
+                              QMessageBox::Abort, QMessageBox::Abort);
+        return;
+    }
 
     WalletModel::UnlockContext ctx(model->requestUnlock());
     if(!ctx.isValid())
@@ -84,7 +100,7 @@ void MessagePage::on_signMessage_clicked()
     }
 
     CKey key;
-    if (!pwalletMain->GetKey(addr, key))
+    if (!pwalletMain->GetKey(keyID, key))
     {
         QMessageBox::critical(this, tr("Error signing"), tr("Private key for %1 is not available.").arg(address),
                               QMessageBox::Abort, QMessageBox::Abort);
@@ -104,4 +120,24 @@ void MessagePage::on_signMessage_clicked()
 
     ui->signature->setText(QString::fromStdString(EncodeBase64(&vchSig[0], vchSig.size())));
     ui->signature->setFont(GUIUtil::bitcoinAddressFont());
+}
+
+void MessagePage::on_clearButton_clicked()
+{
+    ui->signFrom->clear();
+    ui->message->clear();
+    ui->signature->clear();
+
+    ui->signFrom->setFocus();
+}
+
+bool MessagePage::eventFilter(QObject *object, QEvent *event)
+{
+    if(object == ui->signature && (event->type() == QEvent::MouseButtonPress ||
+                                   event->type() == QEvent::FocusIn))
+    {
+        ui->signature->selectAll();
+        return true;
+    }
+    return QDialog::eventFilter(object, event);
 }

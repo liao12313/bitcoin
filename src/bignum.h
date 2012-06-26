@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2012 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
-// file license.txt or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef BITCOIN_BIGNUM_H
 #define BITCOIN_BIGNUM_H
 
@@ -122,16 +122,30 @@ public:
             return (n > (unsigned long)std::numeric_limits<int>::max() ? std::numeric_limits<int>::min() : -(int)n);
     }
 
-    void setint64(int64 n)
+    void setint64(int64 sn)
     {
-        unsigned char pch[sizeof(n) + 6];
+        unsigned char pch[sizeof(sn) + 6];
         unsigned char* p = pch + 4;
-        bool fNegative = false;
-        if (n < (int64)0)
+        bool fNegative;
+        uint64 n;
+
+        if (sn < (int64)0)
         {
+            // We negate in 2 steps to avoid signed subtraction overflow,
+            // i.e. -(-2^63), which is an undefined operation and causes SIGILL
+            // when compiled with -ftrapv.
+            //
+            // Note that uint64_t n = sn, when sn is an int64_t, is a
+            // well-defined operation and n will be equal to sn + 2^64 when sn
+            // is negative.
+            n = sn;
             n = -n;
             fNegative = true;
+        } else {
+            n = sn;
+            fNegative = false;
         }
+
         bool fLeadingZeroes = true;
         for (int i = 0; i < 8; i++)
         {
