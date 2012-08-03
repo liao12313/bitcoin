@@ -5,15 +5,15 @@ INCLUDEPATH += src src/json src/qt
 DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE USE_IPV6
 CONFIG += no_include_pwd
 
-# for boost 1.37, add -mt to the boost libraries 
+# for boost 1.37, add -mt to the boost libraries
 # use: qmake BOOST_LIB_SUFFIX=-mt
 # for boost thread win32 with _win32 sufix
 # use: BOOST_THREAD_LIB_SUFFIX=_win32-...
 # or when linking against a specific BerkelyDB version: BDB_LIB_SUFFIX=-4.8
 
-# Dependency library locations can be customized with BOOST_INCLUDE_PATH, 
-#    BOOST_LIB_PATH, BDB_INCLUDE_PATH, BDB_LIB_PATH
-#    OPENSSL_INCLUDE_PATH and OPENSSL_LIB_PATH respectively
+# Dependency library locations can be customized with:
+#    BOOST_INCLUDE_PATH, BOOST_LIB_PATH, BDB_INCLUDE_PATH,
+#    BDB_LIB_PATH, OPENSSL_INCLUDE_PATH and OPENSSL_LIB_PATH respectively
 
 OBJECTS_DIR = build
 MOC_DIR = build
@@ -81,7 +81,7 @@ contains(BITCOIN_NEED_QT_PLUGINS, 1) {
 }
 
 # regenerate src/build.h
-!windows || contains(USE_BUILD_INFO, 1) {
+!windows|contains(USE_BUILD_INFO, 1) {
     genbuild.depends = FORCE
     genbuild.commands = cd $$PWD; /bin/sh share/genbuild.sh $$OUT_PWD/build/build.h
     genbuild.target = $$OUT_PWD/build/build.h
@@ -100,7 +100,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/qt/optionsdialog.h \
     src/qt/sendcoinsdialog.h \
     src/qt/addressbookpage.h \
-    src/qt/messagepage.h \
+    src/qt/signverifymessagedialog.h \
     src/qt/aboutdialog.h \
     src/qt/editaddressdialog.h \
     src/qt/bitcoinaddressvalidator.h \
@@ -160,8 +160,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/qt/qtipcserver.h \
     src/allocators.h \
     src/ui_interface.h \
-    src/qt/rpcconsole.h \
-    src/qt/verifymessagedialog.h
+    src/qt/rpcconsole.h
 
 SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/transactiontablemodel.cpp \
@@ -169,7 +168,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/optionsdialog.cpp \
     src/qt/sendcoinsdialog.cpp \
     src/qt/addressbookpage.cpp \
-    src/qt/messagepage.cpp \
+    src/qt/signverifymessagedialog.cpp \
     src/qt/aboutdialog.cpp \
     src/qt/editaddressdialog.cpp \
     src/qt/bitcoinaddressvalidator.cpp \
@@ -206,6 +205,8 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/walletmodel.cpp \
     src/bitcoinrpc.cpp \
     src/rpcdump.cpp \
+    src/rpcnet.cpp \
+    src/rpcrawtransaction.cpp \
     src/qt/overviewpage.cpp \
     src/qt/csvmodelwriter.cpp \
     src/crypter.cpp \
@@ -218,7 +219,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/notificator.cpp \
     src/qt/qtipcserver.cpp \
     src/qt/rpcconsole.cpp \
-    src/qt/verifymessagedialog.cpp
+    src/noui.cpp
 
 RESOURCES += \
     src/qt/bitcoin.qrc
@@ -226,7 +227,7 @@ RESOURCES += \
 FORMS += \
     src/qt/forms/sendcoinsdialog.ui \
     src/qt/forms/addressbookpage.ui \
-    src/qt/forms/messagepage.ui \
+    src/qt/forms/signverifymessagedialog.ui \
     src/qt/forms/aboutdialog.ui \
     src/qt/forms/editaddressdialog.ui \
     src/qt/forms/transactiondescdialog.ui \
@@ -234,7 +235,6 @@ FORMS += \
     src/qt/forms/sendcoinsentry.ui \
     src/qt/forms/askpassphrasedialog.ui \
     src/qt/forms/rpcconsole.ui \
-    src/qt/forms/verifymessagedialog.ui \
     src/qt/forms/optionsdialog.ui
 
 contains(USE_QRCODE, 1) {
@@ -279,7 +279,7 @@ OTHER_FILES += \
 # platform specific defaults, if not overridden on command line
 isEmpty(BOOST_LIB_SUFFIX) {
     macx:BOOST_LIB_SUFFIX = -mt
-    windows:BOOST_LIB_SUFFIX = -mgw44-mt-1_43
+    windows:BOOST_LIB_SUFFIX = -mgw44-mt-s-1_49
 }
 
 isEmpty(BOOST_THREAD_LIB_SUFFIX) {
@@ -306,7 +306,7 @@ isEmpty(BOOST_INCLUDE_PATH) {
     macx:BOOST_INCLUDE_PATH = /opt/local/include
 }
 
-windows:LIBS += -lws2_32 -lshlwapi
+windows:LIBS += -lws2_32 -lshlwapi -lmswsock
 windows:DEFINES += WIN32
 windows:RC_FILE = src/qt/res/bitcoin-qt.rc
 

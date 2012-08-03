@@ -26,8 +26,8 @@ extern int nBestHeight;
 
 
 
-inline unsigned int ReceiveBufferSize() { return 1000*GetArg("-maxreceivebuffer", 10*1000); }
-inline unsigned int SendBufferSize() { return 1000*GetArg("-maxsendbuffer", 10*1000); }
+inline unsigned int ReceiveBufferSize() { return 1000*GetArg("-maxreceivebuffer", 5*1000); }
+inline unsigned int SendBufferSize() { return 1000*GetArg("-maxsendbuffer", 1*1000); }
 
 void AddOneShot(std::string strDest);
 bool RecvLine(SOCKET hSocket, std::string& strLine);
@@ -49,7 +49,7 @@ enum
     LOCAL_BIND,   // address explicit bound to
     LOCAL_UPNP,   // address reported by UPnP
     LOCAL_IRC,    // address reported by IRC (deprecated)
-    LOCAL_HTTP,   // address reported by whatismyip.com and similars
+    LOCAL_HTTP,   // address reported by whatismyip.com and similar
     LOCAL_MANUAL, // address explicitly specified (-externalip=)
 
     LOCAL_MAX
@@ -128,6 +128,24 @@ extern std::map<CInv, int64> mapAlreadyAskedFor;
 
 
 
+class CNodeStats
+{
+public:
+    uint64 nServices;
+    int64 nLastSend;
+    int64 nLastRecv;
+    int64 nTimeConnected;
+    std::string addrName;
+    int nVersion;
+    std::string strSubVer;
+    bool fInbound;
+    int64 nReleaseTime;
+    int nStartingHeight;
+    int nMisbehavior;
+};
+
+
+
 
 
 /** Information about a peer */
@@ -163,7 +181,7 @@ protected:
     int nRefCount;
 
     // Denial-of-service detection/prevention
-    // Key is ip address, value is banned-until-time
+    // Key is IP address, value is banned-until-time
     static std::map<CNetAddr, int64> setBanned;
     static CCriticalSection cs_setBanned;
     int nMisbehavior;
@@ -298,7 +316,7 @@ public:
         // the key is the earliest time the request can be sent
         int64& nRequestTime = mapAlreadyAskedFor[inv];
         if (fDebugNet)
-            printf("askfor %s   %"PRI64d"\n", inv.ToString().c_str(), nRequestTime);
+            printf("askfor %s   %"PRI64d" (%s)\n", inv.ToString().c_str(), nRequestTime, DateTimeStrFormat("%H:%M:%S", nRequestTime/1000000).c_str());
 
         // Make sure not to reuse time indexes to keep things in the same order
         int64 nNow = (GetTime() - 1) * 1000000;
@@ -353,14 +371,14 @@ public:
 
         // Set the size
         unsigned int nSize = vSend.size() - nMessageStart;
-        memcpy((char*)&vSend[nHeaderStart] + offsetof(CMessageHeader, nMessageSize), &nSize, sizeof(nSize));
+        memcpy((char*)&vSend[nHeaderStart] + CMessageHeader::MESSAGE_SIZE_OFFSET, &nSize, sizeof(nSize));
 
         // Set the checksum
         uint256 hash = Hash(vSend.begin() + nMessageStart, vSend.end());
         unsigned int nChecksum = 0;
         memcpy(&nChecksum, &hash, sizeof(nChecksum));
-        assert(nMessageStart - nHeaderStart >= offsetof(CMessageHeader, nChecksum) + sizeof(nChecksum));
-        memcpy((char*)&vSend[nHeaderStart] + offsetof(CMessageHeader, nChecksum), &nChecksum, sizeof(nChecksum));
+        assert(nMessageStart - nHeaderStart >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
+        memcpy((char*)&vSend[nHeaderStart] + CMessageHeader::CHECKSUM_OFFSET, &nChecksum, sizeof(nChecksum));
 
         if (fDebug) {
             printf("(%d bytes)\n", nSize);
@@ -617,6 +635,7 @@ public:
     static void ClearBanned(); // needed for unit testing
     static bool IsBanned(CNetAddr ip);
     bool Misbehaving(int howmuch); // 1 == a little, 100 == a lot
+    void copyStats(CNodeStats &stats);
 };
 
 

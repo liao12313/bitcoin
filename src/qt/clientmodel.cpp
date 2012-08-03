@@ -18,7 +18,7 @@ ClientModel::ClientModel(OptionsModel *optionsModel, QObject *parent) :
 {
     numBlocksAtStartup = -1;
 
-    pollTimer = new QTimer();
+    pollTimer = new QTimer(this);
     pollTimer->setInterval(MODEL_UPDATE_DELAY);
     pollTimer->start();
     connect(pollTimer, SIGNAL(timeout()), this, SLOT(updateTimer()));
@@ -60,10 +60,12 @@ void ClientModel::updateTimer()
     int newNumBlocksOfPeers = getNumBlocksOfPeers();
 
     if(cachedNumBlocks != newNumBlocks || cachedNumBlocksOfPeers != newNumBlocksOfPeers)
-        emit numBlocksChanged(newNumBlocks, newNumBlocksOfPeers);
+    {
+        cachedNumBlocks = newNumBlocks;
+        cachedNumBlocksOfPeers = newNumBlocksOfPeers;
 
-    cachedNumBlocks = newNumBlocks;
-    cachedNumBlocksOfPeers = newNumBlocksOfPeers;
+        emit numBlocksChanged(newNumBlocks, newNumBlocksOfPeers);
+    }
 }
 
 void ClientModel::updateNumConnections(int numConnections)

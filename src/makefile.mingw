@@ -1,24 +1,24 @@
 # Copyright (c) 2009-2010 Satoshi Nakamoto
 # Distributed under the MIT/X11 software license, see the accompanying
-# file license.txt or http://www.opensource.org/licenses/mit-license.php.
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 USE_UPNP:=0
 
 INCLUDEPATHS= \
- -I"C:\projects\bitcoin\bitcoin\boost_1_47_0" \
- -I"C:\projects\bitcoin\bitcoin\db-4.8.30.NC\build_unix" \
- -I"C:\projects\bitcoin\bitcoin\openssl-1.0.0d\include" \
+ -I"C:\boost-1.49.0-mgw" \
+ -I"C:\db-4.8.30.NC-mgw\build_unix" \
+ -I"C:\openssl-1.0.1b-mgw\include"
 
 LIBPATHS= \
- -L"C:\projects\bitcoin\bitcoin\boost_1_47_0\stage\lib" \
- -L"C:\projects\bitcoin\bitcoin\db-4.8.30.NC\build_unix" \
- -L"C:\projects\bitcoin\bitcoin\openssl-1.0.0d" \
+ -L"C:\boost-1.49.0-mgw\stage\lib" \
+ -L"C:\db-4.8.30.NC-mgw\build_unix" \
+ -L"C:\openssl-1.0.1b-mgw"
 
 LIBS= \
- -l boost_system-mgw45-mt-s-1_47 \
- -l boost_filesystem-mgw45-mt-s-1_47 \
- -l boost_program_options-mgw45-mt-s-1_47 \
- -l boost_thread-mgw45-mt-s-1_47 \
+ -l boost_system-mgw45-mt-s-1_49 \
+ -l boost_filesystem-mgw45-mt-s-1_49 \
+ -l boost_program_options-mgw45-mt-s-1_49 \
+ -l boost_thread-mgw45-mt-s-1_49 \
  -l db_cxx \
  -l ssl \
  -l crypto
@@ -30,13 +30,13 @@ CFLAGS=-mthreads -O2 -w -Wall -Wextra -Wformat -Wformat-security -Wno-unused-par
 TESTDEFS = -DTEST_DATA_DIR=$(abspath test/data)
 
 ifdef USE_UPNP
- INCLUDEPATHS += -I"C:\projects\bitcoin\bitcoin\miniupnpc-1.6"
- LIBPATHS += -L"C:\projects\bitcoin\bitcoin\miniupnpc-1.6"
+ INCLUDEPATHS += -I"C:\miniupnpc-1.6-mgw"
+ LIBPATHS += -L"C:\miniupnpc-1.6-mgw"
  LIBS += -l miniupnpc -l iphlpapi
  DEFS += -DSTATICLIB -DUSE_UPNP=$(USE_UPNP)
 endif
 
-LIBS += -l kernel32 -l user32 -l gdi32 -l comdlg32 -l winspool -l winmm -l shell32 -l comctl32 -l ole32 -l oleaut32 -l uuid -l rpcrt4 -l advapi32 -l ws2_32 -l shlwapi
+LIBS += -l kernel32 -l user32 -l gdi32 -l comdlg32 -l winspool -l winmm -l shell32 -l comctl32 -l ole32 -l oleaut32 -l uuid -l rpcrt4 -l advapi32 -l ws2_32 -l mswsock -l shlwapi
 
 # TODO: make the mingw builds smarter about dependencies, like the linux/osx builds are
 HEADERS = $(wildcard *.h)
@@ -57,6 +57,8 @@ OBJS= \
     obj/protocol.o \
     obj/bitcoinrpc.o \
     obj/rpcdump.o \
+    obj/rpcnet.o \
+    obj/rpcrawtransaction.o \
     obj/script.o \
     obj/sync.o \
     obj/util.o \
