@@ -312,10 +312,22 @@ bool AppInit2()
     // Disable confusing "helpful" text message on abort, Ctrl-C
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
-#ifndef WIN32
-    umask(077);
+#ifdef WIN32
+    // Enable Data Execution Prevention (DEP)
+    // Minimum supported OS versions: WinXP SP3, WinVista >= SP1, Win Server 2008
+    // A failure is non-critical and needs no further attention!
+#ifndef PROCESS_DEP_ENABLE
+// We define this here, because GCCs winbase.h limits this to _WIN32_WINNT >= 0x0601 (Windows 7),
+// which is not correct. Can be removed, when GCCs winbase.h is fixed!
+#define PROCESS_DEP_ENABLE 0x00000001
+#endif
+    typedef BOOL (WINAPI *PSETPROCDEPPOL)(DWORD);
+    PSETPROCDEPPOL setProcDEPPol = (PSETPROCDEPPOL)GetProcAddress(GetModuleHandleA("Kernel32.dll"), "SetProcessDEPPolicy");
+    if (setProcDEPPol != NULL) setProcDEPPol(PROCESS_DEP_ENABLE);
 #endif
 #ifndef WIN32
+    umask(077);
+
     // Clean shutdown on SIGTERM
     struct sigaction sa;
     sa.sa_handler = HandleSIGTERM;
@@ -345,7 +357,7 @@ bool AppInit2()
         SoftSetBoolArg("-listen", true);
     }
 
-    if (mapArgs.count("-connect")) {
+    if (mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0) {
         // when only connecting to trusted nodes, do not seed via DNS, or listen by default
         SoftSetBoolArg("-dnsseed", false);
         SoftSetBoolArg("-listen", false);
@@ -488,6 +500,12 @@ bool AppInit2()
                 SetLimited(net);
         }
     }
+#if defined(USE_IPV6)
+#if ! USE_IPV6
+    else
+        SetLimited(NET_IPV6);
+#endif
+#endif
 
     CService addrProxy;
     bool fProxy = false;
@@ -703,6 +721,7 @@ bool AppInit2()
 
     if (mapArgs.count("-loadblock"))
     {
+        uiInterface.InitMessage(_("Importing blocks..."));
         BOOST_FOREACH(string strFile, mapMultiArgs["-loadblock"])
         {
             FILE *file = fopen(strFile.c_str(), "rb");
