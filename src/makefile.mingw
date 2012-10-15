@@ -8,12 +8,12 @@ USE_IPV6:=1
 INCLUDEPATHS= \
  -I"C:\boost-1.50.0-mgw" \
  -I"C:\db-4.8.30.NC-mgw\build_unix" \
- -I"C:\openssl-1.0.1b-mgw\include"
+ -I"C:\openssl-1.0.1c-mgw\include"
 
 LIBPATHS= \
  -L"C:\boost-1.50.0-mgw\stage\lib" \
  -L"C:\db-4.8.30.NC-mgw\build_unix" \
- -L"C:\openssl-1.0.1b-mgw"
+ -L"C:\openssl-1.0.1c-mgw"
 
 LIBS= \
  -l boost_system-mgw45-mt-s-1_50 \
@@ -52,6 +52,7 @@ LIBS += -l kernel32 -l user32 -l gdi32 -l comdlg32 -l winspool -l winmm -l shell
 HEADERS = $(wildcard *.h)
 
 OBJS= \
+    obj/alert.o \
     obj/version.o \
     obj/checkpoints.o \
     obj/netbase.o \
@@ -82,6 +83,9 @@ OBJS= \
 
 all: bitcoind.exe
 
+test check: test_bitcoin.exe FORCE
+	test_bitcoin.exe
+
 obj/%.o: %.cpp $(HEADERS)
 	g++ -c $(CFLAGS) -o $@ $<
 
@@ -100,4 +104,5 @@ clean:
 	-del /Q bitcoind test_bitcoin
 	-del /Q obj\*
 	-del /Q obj-test\*
-	-del /Q build.h
+
+FORCE:
