@@ -1,9 +1,15 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include "splashscreen.h"
+
+#include "chainparams.h"
 #include "clientversion.h"
 #include "util.h"
 
-#include <QPainter>
 #include <QApplication>
+#include <QPainter>
 
 SplashScreen::SplashScreen(const QPixmap &pixmap, Qt::WindowFlags f) :
     QSplashScreen(pixmap, f)
@@ -26,7 +32,7 @@ SplashScreen::SplashScreen(const QPixmap &pixmap, Qt::WindowFlags f) :
 
     // load the bitmap for writing some text over it
     QPixmap newPixmap;
-    if(GetBoolArg("-testnet")) {
+    if(TestNet()) {
         newPixmap     = QPixmap(":/images/splash_testnet");
     }
     else {
@@ -65,9 +71,8 @@ SplashScreen::SplashScreen(const QPixmap &pixmap, Qt::WindowFlags f) :
     pixPaint.setFont(QFont(font, 10*fontFactor));
     pixPaint.drawText(newPixmap.width()-titleTextWidth-paddingRight,paddingTop+titleCopyrightVSpace,copyrightText);
 
-    // draw testnet string if -testnet is on
-    if(QApplication::applicationName().contains(QString("-testnet"))) {
-        // draw copyright stuff
+    // draw testnet string if testnet is on
+    if(TestNet()) {
         QFont boldFont = QFont(font, 10*fontFactor);
         boldFont.setWeight(QFont::Bold);
         pixPaint.setFont(boldFont);

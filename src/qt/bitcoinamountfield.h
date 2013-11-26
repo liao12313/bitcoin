@@ -1,3 +1,7 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #ifndef BITCOINAMOUNTFIELD_H
 #define BITCOINAMOUNTFIELD_H
 
@@ -21,6 +25,9 @@ public:
 
     qint64 value(bool *valid=0) const;
     void setValue(qint64 value);
+
+    /** Make read-only **/
+    void setReadOnly(bool fReadOnly);
 
     /** Mark current value as invalid in UI. */
     void setValid(bool valid);

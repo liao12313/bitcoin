@@ -13,43 +13,62 @@ packages:
 - "libboost-filesystem-dev"
 - "libboost-program-options-dev"
 - "libboost-thread-dev"
+- "libboost-test-dev"
 - "libssl-dev"
 - "git-core"
 - "unzip"
 - "pkg-config"
 - "libpng12-dev"
-reference_datetime: "2011-01-30 00:00:00"
+- "autoconf2.13"
+- "libtool"
+- "automake"
+- "faketime"
+- "bsdmainutils"
+reference_datetime: "2013-06-01 00:00:00"
 remotes:
 - "url": "https://github.com/bitcoin/bitcoin.git"
   "dir": "bitcoin"
 files:
 - "miniupnpc-1.6.tar.gz"
 - "qrencode-3.2.0.tar.bz2"
+- "protobuf-2.5.0.tar.bz2"
 script: |
-  INSTDIR="$HOME/install"
-  export LIBRARY_PATH="$INSTDIR/lib"
-  #
-  tar xzf miniupnpc-1.6.tar.gz
+  STAGING="$HOME/install"
+  export LIBRARY_PATH="$STAGING/lib"
+  # Integrity Check
+  echo "bbd6b756e6af44b5a5b0f9b93eada3fb8922ed1d6451b7d6f184d0ae0c813994  miniupnpc-1.6.tar.gz"   | sha256sum -c
+  echo "03c4bc7cd9a75747c3815d509bbe061907d615764f2357923f0db948c567068f  qrencode-3.2.0.tar.bz2" | sha256sum -c
+  echo "13bfc5ae543cf3aa180ac2485c0bc89495e3ae711fc6fab4f8ffe90dfb4bb677  protobuf-2.5.0.tar.bz2" | sha256sum -c
+
+  tar xzfm miniupnpc-1.6.tar.gz
   cd miniupnpc-1.6
-  INSTALLPREFIX=$INSTDIR make $MAKEOPTS install
+  INSTALLPREFIX=$STAGING make $MAKEOPTS install
   cd ..
   #
-  tar xjf qrencode-3.2.0.tar.bz2
+  tar xjfm qrencode-3.2.0.tar.bz2
   cd qrencode-3.2.0
-  ./configure --prefix=$INSTDIR --enable-static --disable-shared
+  sed -i 's/@LIBPTHREAD@//' libqrencode.pc.in
+  ./configure --prefix=$STAGING --enable-static --disable-shared
+  make $MAKEOPTS install
+  cd ..
+  #
+  tar xjfm protobuf-2.5.0.tar.bz2
+  cd protobuf-2.5.0
+  mkdir -p $STAGING/host/bin
+  ./configure --prefix=$STAGING --bindir=$STAGING/host/bin --enable-static --disable-shared
   make $MAKEOPTS install
   cd ..
   #
   cd bitcoin
-  mkdir -p $OUTDIR/src
-  git archive HEAD | tar -x -C $OUTDIR/src
-  cp $OUTDIR/src/doc/README $OUTDIR
-  cp $OUTDIR/src/COPYING $OUTDIR
-  cd src
-  make -f makefile.unix STATIC=1 OPENSSL_INCLUDE_PATH="$INSTDIR/include" OPENSSL_LIB_PATH="$INSTDIR/lib" $MAKEOPTS bitcoind USE_UPNP=0 DEBUGFLAGS=
-  mkdir -p $OUTDIR/bin/$GBUILD_BITS
-  install -s bitcoind $OUTDIR/bin/$GBUILD_BITS
-  cd ..
-  qmake INCLUDEPATH="$INSTDIR/include" LIBS="-L$INSTDIR/lib" RELEASE=1 USE_QRCODE=1
+  export TAR_OPTIONS=--mtime=`echo $REFERENCE_DATETIME | awk '{ print $1 }'`
+  ./autogen.sh
+  ./configure --prefix=$STAGING --bindir=$OUTDIR --with-protoc-bindir=$STAGING/host/bin --disable-maintainer-mode --disable-dependency-tracking PKG_CONFIG_PATH="$STAGING/lib/pkgconfig" CPPFLAGS="-I$STAGING/include" LDFLAGS="-L$STAGING/lib" CXXFLAGS="-frandom-seed=bitcoin"
+  make dist
+  mkdir -p distsrc
+  cd distsrc
+  tar --strip-components=1 -xf ../bitcoin-*.tar.*
+  ./configure --prefix=$STAGING --bindir=$OUTDIR --with-protoc-bindir=$STAGING/host/bin --disable-maintainer-mode --disable-dependency-tracking PKG_CONFIG_PATH="$STAGING/lib/pkgconfig" CPPFLAGS="-I$STAGING/include" LDFLAGS="-L$STAGING/lib" CXXFLAGS="-frandom-seed=bitcoin"
   make $MAKEOPTS
-  install bitcoin-qt $OUTDIR/bin/$GBUILD_BITS
+  make $MAKEOPTS install-strip
+  mkdir -p $OUTDIR/src
+  cp ../bitcoin-*.tar.* $OUTDIR/src

@@ -1,10 +1,9 @@
-#include <boost/algorithm/string.hpp>
-#include <boost/foreach.hpp>
-#include <boost/test/unit_test.hpp>
+#include "bitcoinrpc.h"
 
 #include "base58.h"
-#include "util.h"
-#include "bitcoinrpc.h"
+
+#include <boost/algorithm/string.hpp>
+#include <boost/test/unit_test.hpp>
 
 using namespace std;
 using namespace json_spirit;
@@ -79,6 +78,35 @@ static Value CallRPC(string args)
     }
 }
 
+BOOST_AUTO_TEST_CASE(rpc_wallet)
+{
+    // Test RPC calls for various wallet statistics
+    Value r;
+
+    BOOST_CHECK_NO_THROW(CallRPC("listunspent"));
+    BOOST_CHECK_THROW(CallRPC("listunspent string"), runtime_error);
+    BOOST_CHECK_THROW(CallRPC("listunspent 0 string"), runtime_error);
+    BOOST_CHECK_THROW(CallRPC("listunspent 0 1 not_array"), runtime_error);
+    BOOST_CHECK_THROW(CallRPC("listunspent 0 1 [] extra"), runtime_error);
+    BOOST_CHECK_NO_THROW(r=CallRPC("listunspent 0 1 []"));
+    BOOST_CHECK(r.get_array().empty());
+
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaddress"));
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaddress 0"));
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaddress not_int"), runtime_error);
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaddress 0 not_bool"), runtime_error);
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaddress 0 true"));
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaddress 0 true extra"), runtime_error);
+
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaccount"));
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaccount 0"));
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaccount not_int"), runtime_error);
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaccount 0 not_bool"), runtime_error);
+    BOOST_CHECK_NO_THROW(CallRPC("listreceivedbyaccount 0 true"));
+    BOOST_CHECK_THROW(CallRPC("listreceivedbyaccount 0 true extra"), runtime_error);
+}
+
+
 BOOST_AUTO_TEST_CASE(rpc_rawparams)
 {
     // Test raw transaction API argument handling
@@ -87,14 +115,6 @@ BOOST_AUTO_TEST_CASE(rpc_rawparams)
     BOOST_CHECK_THROW(CallRPC("getrawtransaction"), runtime_error);
     BOOST_CHECK_THROW(CallRPC("getrawtransaction not_hex"), runtime_error);
     BOOST_CHECK_THROW(CallRPC("getrawtransaction a3b807410df0b60fcb9736768df5823938b2f838694939ba45f3c0a1bff150ed not_int"), runtime_error);
-
-    BOOST_CHECK_NO_THROW(CallRPC("listunspent"));
-    BOOST_CHECK_THROW(CallRPC("listunspent string"), runtime_error);
-    BOOST_CHECK_THROW(CallRPC("listunspent 0 string"), runtime_error);
-    BOOST_CHECK_THROW(CallRPC("listunspent 0 1 not_array"), runtime_error);
-    BOOST_CHECK_NO_THROW(r=CallRPC("listunspent 0 1 []"));
-    BOOST_CHECK_THROW(r=CallRPC("listunspent 0 1 [] extra"), runtime_error);
-    BOOST_CHECK(r.get_array().empty());
 
     BOOST_CHECK_THROW(CallRPC("createrawtransaction"), runtime_error);
     BOOST_CHECK_THROW(CallRPC("createrawtransaction null null"), runtime_error);
@@ -145,6 +165,37 @@ BOOST_AUTO_TEST_CASE(rpc_rawsign)
     BOOST_CHECK(find_value(r.get_obj(), "complete").get_bool() == false);
     r = CallRPC(string("signrawtransaction ")+notsigned+" "+prevout+" "+"["+privkey1+","+privkey2+"]");
     BOOST_CHECK(find_value(r.get_obj(), "complete").get_bool() == true);
+}
+
+BOOST_AUTO_TEST_CASE(rpc_format_monetary_values)
+{
+    BOOST_CHECK(write_string(ValueFromAmount(0LL), false) == "0.00000000");
+    BOOST_CHECK(write_string(ValueFromAmount(1LL), false) == "0.00000001");
+    BOOST_CHECK(write_string(ValueFromAmount(17622195LL), false) == "0.17622195");
+    BOOST_CHECK(write_string(ValueFromAmount(50000000LL), false) == "0.50000000");
+    BOOST_CHECK(write_string(ValueFromAmount(89898989LL), false) == "0.89898989");
+    BOOST_CHECK(write_string(ValueFromAmount(100000000LL), false) == "1.00000000");
+    BOOST_CHECK(write_string(ValueFromAmount(2099999999999990LL), false) == "20999999.99999990");
+    BOOST_CHECK(write_string(ValueFromAmount(2099999999999999LL), false) == "20999999.99999999");
+}
+
+static Value ValueFromString(const std::string &str)
+{
+    Value value;
+    BOOST_CHECK(read_string(str, value));
+    return value;
+}
+
+BOOST_AUTO_TEST_CASE(rpc_parse_monetary_values)
+{
+    BOOST_CHECK(AmountFromValue(ValueFromString("0.00000001")) == 1LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("0.17622195")) == 17622195LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("0.5")) == 50000000LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("0.50000000")) == 50000000LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("0.89898989")) == 89898989LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("1.00000000")) == 100000000LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("20999999.9999999")) == 2099999999999990LL);
+    BOOST_CHECK(AmountFromValue(ValueFromString("20999999.99999999")) == 2099999999999999LL);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

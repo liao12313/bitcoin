@@ -1,31 +1,30 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2012 The Bitcoin developers
+// Copyright (c) 2009-2013 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #ifndef BITCOIN_DB_H
 #define BITCOIN_DB_H
 
-#include "main.h"
+#include "serialize.h"
+#include "sync.h"
+#include "version.h"
 
 #include <map>
 #include <string>
 #include <vector>
 
+#include <boost/filesystem/path.hpp>
 #include <db_cxx.h>
 
-class CAddress;
 class CAddrMan;
-class CBlockLocator;
+struct CBlockLocator;
 class CDiskBlockIndex;
-class CMasterKey;
 class COutPoint;
-class CWallet;
-class CWalletTx;
 
 extern unsigned int nWalletDBUpdated;
 
 void ThreadFlushWalletDB(const std::string& strWalletFile);
-bool BackupWallet(const CWallet& wallet, const std::string& strDest);
 
 
 class CDBEnv
@@ -33,7 +32,7 @@ class CDBEnv
 private:
     bool fDbEnvInit;
     bool fMockDb;
-    std::string strPath;
+    boost::filesystem::path path;
 
     void EnvShutdown();
 

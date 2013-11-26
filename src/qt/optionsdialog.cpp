@@ -1,10 +1,19 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#if defined(HAVE_CONFIG_H)
+#include "bitcoin-config.h"
+#endif
+
 #include "optionsdialog.h"
 #include "ui_optionsdialog.h"
 
 #include "bitcoinunits.h"
 #include "monitoreddatamapper.h"
-#include "netbase.h"
 #include "optionsmodel.h"
+
+#include "netbase.h"
 
 #include <QDir>
 #include <QIntValidator>
@@ -45,7 +54,8 @@ OptionsDialog::OptionsDialog(QWidget *parent) :
 
     /* Window elements init */
 #ifdef Q_OS_MAC
-    ui->tabWindow->setVisible(false);
+    /* remove Window tab on Mac */
+    ui->tabWidget->removeTab(ui->tabWidget->indexOf(ui->tabWindow));
 #endif
 
     /* Display elements init */
@@ -145,6 +155,7 @@ void OptionsDialog::setMapper()
     mapper->addMapping(ui->lang, OptionsModel::Language);
     mapper->addMapping(ui->unit, OptionsModel::DisplayUnit);
     mapper->addMapping(ui->displayAddresses, OptionsModel::DisplayAddresses);
+    mapper->addMapping(ui->coinControlFeatures, OptionsModel::CoinControlFeatures);
 }
 
 void OptionsDialog::enableApplyButton()

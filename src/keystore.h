@@ -1,12 +1,14 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2012 The Bitcoin developers
+// Copyright (c) 2009-2013 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #ifndef BITCOIN_KEYSTORE_H
 #define BITCOIN_KEYSTORE_H
 
-#include "crypter.h"
+#include "key.h"
 #include "sync.h"
+
 #include <boost/signals2/signal.hpp>
 
 class CScript;
@@ -21,7 +23,8 @@ public:
     virtual ~CKeyStore() {}
 
     // Add a key to the store.
-    virtual bool AddKey(const CKey& key) =0;
+    virtual bool AddKeyPubKey(const CKey &key, const CPubKey &pubkey) =0;
+    virtual bool AddKey(const CKey &key);
 
     // Check whether a key corresponding to a given address is present in the store.
     virtual bool HaveKey(const CKeyID &address) const =0;
@@ -33,18 +36,9 @@ public:
     virtual bool AddCScript(const CScript& redeemScript) =0;
     virtual bool HaveCScript(const CScriptID &hash) const =0;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const =0;
-
-    virtual bool GetSecret(const CKeyID &address, CSecret& vchSecret, bool &fCompressed) const
-    {
-        CKey key;
-        if (!GetKey(address, key))
-            return false;
-        vchSecret = key.GetSecret(fCompressed);
-        return true;
-    }
 };
 
-typedef std::map<CKeyID, std::pair<CSecret, bool> > KeyMap;
+typedef std::map<CKeyID, CKey> KeyMap;
 typedef std::map<CScriptID, CScript > ScriptMap;
 
 /** Basic key store, that keeps keys in an address->secret map */
@@ -55,7 +49,7 @@ protected:
     ScriptMap mapScripts;
 
 public:
-    bool AddKey(const CKey& key);
+    bool AddKeyPubKey(const CKey& key, const CPubKey &pubkey);
     bool HaveKey(const CKeyID &address) const
     {
         bool result;
@@ -85,8 +79,7 @@ public:
             KeyMap::const_iterator mi = mapKeys.find(address);
             if (mi != mapKeys.end())
             {
-                keyOut.Reset();
-                keyOut.SetSecret((*mi).second.first, (*mi).second.second);
+                keyOut = mi->second;
                 return true;
             }
         }
@@ -97,7 +90,9 @@ public:
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const;
 };
 
+typedef std::vector<unsigned char, secure_allocator<unsigned char> > CKeyingMaterial;
 typedef std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char> > > CryptedKeyMap;
+
 
 /** Keystore which keeps the private keys encrypted.
  * It derives from the basic key store, which is used if no encryption is active.
@@ -146,7 +141,7 @@ public:
     bool Lock();
 
     virtual bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
-    bool AddKey(const CKey& key);
+    bool AddKeyPubKey(const CKey& key, const CPubKey &pubkey);
     bool HaveKey(const CKeyID &address) const
     {
         {

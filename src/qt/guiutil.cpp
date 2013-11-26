@@ -1,28 +1,16 @@
-#include <QApplication>
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "guiutil.h"
 
 #include "bitcoinaddressvalidator.h"
-#include "walletmodel.h"
 #include "bitcoinunits.h"
+#include "walletmodel.h"
 
-#include "util.h"
+#include "core.h"
 #include "init.h"
-
-#include <QDateTime>
-#include <QDoubleValidator>
-#include <QFont>
-#include <QLineEdit>
-#include <QUrl>
-#include <QTextDocument> // For Qt::escape
-#include <QAbstractItemView>
-#include <QClipboard>
-#include <QFileDialog>
-#include <QDesktopServices>
-#include <QThread>
-
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/fstream.hpp>
+#include "util.h"
 
 #ifdef WIN32
 #ifdef _WIN32_WINNT
@@ -37,9 +25,31 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include "shlwapi.h"
-#include "shlobj.h"
 #include "shellapi.h"
+#include "shlobj.h"
+#include "shlwapi.h"
+#endif
+
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
+#include <QAbstractItemView>
+#include <QApplication>
+#include <QClipboard>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDesktopWidget>
+#include <QDoubleValidator>
+#include <QFileDialog>
+#include <QFont>
+#include <QLineEdit>
+#include <QSettings>
+#include <QTextDocument> // for Qt::mightBeRichText
+#include <QThread>
+
+#if QT_VERSION < 0x050000
+#include <QUrl>
+#else
+#include <QUrlQuery>
 #endif
 
 namespace GUIUtil {
@@ -86,7 +96,13 @@ bool parseBitcoinURI(const QUrl &uri, SendCoinsRecipient *out)
     SendCoinsRecipient rv;
     rv.address = uri.path();
     rv.amount = 0;
+
+#if QT_VERSION < 0x050000
     QList<QPair<QString, QString> > items = uri.queryItems();
+#else
+    QUrlQuery uriQuery(uri);
+    QList<QPair<QString, QString> > items = uriQuery.queryItems();
+#endif
     for (QList<QPair<QString, QString> >::iterator i = items.begin(); i != items.end(); i++)
     {
         bool fShouldReturnFalse = false;
@@ -99,6 +115,11 @@ bool parseBitcoinURI(const QUrl &uri, SendCoinsRecipient *out)
         if (i->first == "label")
         {
             rv.label = i->second;
+            fShouldReturnFalse = false;
+        }
+        if (i->first == "message")
+        {
+            rv.message = i->second;
             fShouldReturnFalse = false;
         }
         else if (i->first == "amount")
@@ -129,7 +150,7 @@ bool parseBitcoinURI(QString uri, SendCoinsRecipient *out)
     //
     //    Cannot handle this later, because bitcoin:// will cause Qt to see the part after // as host,
     //    which will lower-case it (and thus invalidate the address).
-    if(uri.startsWith("bitcoin://"))
+    if(uri.startsWith("bitcoin://", Qt::CaseInsensitive))
     {
         uri.replace(0, 10, "bitcoin:");
     }
@@ -137,9 +158,49 @@ bool parseBitcoinURI(QString uri, SendCoinsRecipient *out)
     return parseBitcoinURI(uriInstance, out);
 }
 
+QString formatBitcoinURI(const SendCoinsRecipient &info)
+{
+    QString ret = QString("bitcoin:%1").arg(info.address);
+    int paramCount = 0;
+
+    if (info.amount)
+    {
+        ret += QString("?amount=%1").arg(BitcoinUnits::format(BitcoinUnits::BTC, info.amount));
+        paramCount++;
+    }
+
+    if (!info.label.isEmpty())
+    {
+        QString lbl(QUrl::toPercentEncoding(info.label));
+        ret += QString("%1label=%2").arg(paramCount == 0 ? "?" : "&").arg(lbl);
+        paramCount++;
+    }
+
+    if (!info.message.isEmpty())
+    {
+        QString msg(QUrl::toPercentEncoding(info.message));;
+        ret += QString("%1message=%2").arg(paramCount == 0 ? "?" : "&").arg(msg);
+        paramCount++;
+    }
+
+    return ret;
+}
+
+bool isDust(const QString& address, qint64 amount)
+{
+    CTxDestination dest = CBitcoinAddress(address.toStdString()).Get();
+    CScript script; script.SetDestination(dest);
+    CTxOut txOut(amount, script);
+    return txOut.IsDust(CTransaction::nMinRelayTxFee);
+}
+
 QString HtmlEscape(const QString& str, bool fMultiLine)
 {
+#if QT_VERSION < 0x050000
     QString escaped = Qt::escape(str);
+#else
+    QString escaped = str.toHtmlEscaped();
+#endif
     if(fMultiLine)
     {
         escaped = escaped.replace("\n", "<br>\n");
@@ -160,29 +221,31 @@ void copyEntryData(QAbstractItemView *view, int column, int role)
 
     if(!selection.isEmpty())
     {
-        // Copy first item (global clipboard)
-        QApplication::clipboard()->setText(selection.at(0).data(role).toString(), QClipboard::Clipboard);
-        // Copy first item (global mouse selection for e.g. X11 - NOP on Windows)
-        QApplication::clipboard()->setText(selection.at(0).data(role).toString(), QClipboard::Selection);
+        // Copy first item
+        setClipboard(selection.at(0).data(role).toString());
     }
 }
 
-QString getSaveFileName(QWidget *parent, const QString &caption,
-                                 const QString &dir,
-                                 const QString &filter,
-                                 QString *selectedSuffixOut)
+QString getSaveFileName(QWidget *parent, const QString &caption, const QString &dir,
+    const QString &filter,
+    QString *selectedSuffixOut)
 {
     QString selectedFilter;
     QString myDir;
     if(dir.isEmpty()) // Default to user documents location
     {
+#if QT_VERSION < 0x050000
         myDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
+#else
+        myDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+#endif
     }
     else
     {
         myDir = dir;
     }
-    QString result = QFileDialog::getSaveFileName(parent, caption, myDir, filter, &selectedFilter);
+    /* Directly convert path to native OS path separators */
+    QString result = QDir::toNativeSeparators(QFileDialog::getSaveFileName(parent, caption, myDir, filter, &selectedFilter));
 
     /* Extract first suffix from filter pattern "Description (*.foo)" or "Description (*.foo *.bar ...) */
     QRegExp filter_re(".* \\(\\*\\.(.*)[ \\)]");
@@ -208,6 +271,41 @@ QString getSaveFileName(QWidget *parent, const QString &caption,
     /* Return selected suffix if asked to */
     if(selectedSuffixOut)
     {
+        *selectedSuffixOut = selectedSuffix;
+    }
+    return result;
+}
+
+QString getOpenFileName(QWidget *parent, const QString &caption, const QString &dir,
+    const QString &filter,
+    QString *selectedSuffixOut)
+{
+    QString selectedFilter;
+    QString myDir;
+    if(dir.isEmpty()) // Default to user documents location
+    {
+#if QT_VERSION < 0x050000
+        myDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
+#else
+        myDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+#endif
+    }
+    else
+    {
+        myDir = dir;
+    }
+    /* Directly convert path to native OS path separators */
+    QString result = QDir::toNativeSeparators(QFileDialog::getOpenFileName(parent, caption, myDir, filter, &selectedFilter));
+
+    if(selectedSuffixOut)
+    {
+        /* Extract first suffix from filter pattern "Description (*.foo)" or "Description (*.foo *.bar ...) */
+        QRegExp filter_re(".* \\(\\*\\.(.*)[ \\)]");
+        QString selectedSuffix;
+        if(filter_re.exactMatch(selectedFilter))
+        {
+            selectedSuffix = filter_re.cap(1);
+        }
         *selectedSuffixOut = selectedSuffix;
     }
     return result;
@@ -408,15 +506,89 @@ bool SetStartOnSystemStartup(bool fAutoStart)
     }
     return true;
 }
-#else
 
-// TODO: OSX startup stuff; see:
-// https://developer.apple.com/library/mac/#documentation/MacOSX/Conceptual/BPSystemStartup/Articles/CustomLogin.html
+
+#elif defined(Q_OS_MAC)
+// based on: https://github.com/Mozketo/LaunchAtLoginController/blob/master/LaunchAtLoginController.m
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreServices/CoreServices.h>
+
+LSSharedFileListItemRef findStartupItemInList(LSSharedFileListRef list, CFURLRef findUrl);
+LSSharedFileListItemRef findStartupItemInList(LSSharedFileListRef list, CFURLRef findUrl)
+{
+    // loop through the list of startup items and try to find the bitcoin app
+    CFArrayRef listSnapshot = LSSharedFileListCopySnapshot(list, NULL);
+    for(int i = 0; i < CFArrayGetCount(listSnapshot); i++) {
+        LSSharedFileListItemRef item = (LSSharedFileListItemRef)CFArrayGetValueAtIndex(listSnapshot, i);
+        UInt32 resolutionFlags = kLSSharedFileListNoUserInteraction | kLSSharedFileListDoNotMountVolumes;
+        CFURLRef currentItemURL = NULL;
+        LSSharedFileListItemResolve(item, resolutionFlags, &currentItemURL, NULL);
+        if(currentItemURL && CFEqual(currentItemURL, findUrl)) {
+            // found
+            CFRelease(currentItemURL);
+            return item;
+        }
+        if(currentItemURL) {
+            CFRelease(currentItemURL);
+        }
+    }
+    return NULL;
+}
+
+bool GetStartOnSystemStartup()
+{
+    CFURLRef bitcoinAppUrl = CFBundleCopyBundleURL(CFBundleGetMainBundle());
+    LSSharedFileListRef loginItems = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
+    LSSharedFileListItemRef foundItem = findStartupItemInList(loginItems, bitcoinAppUrl);
+    return !!foundItem; // return boolified object
+}
+
+bool SetStartOnSystemStartup(bool fAutoStart)
+{
+    CFURLRef bitcoinAppUrl = CFBundleCopyBundleURL(CFBundleGetMainBundle());
+    LSSharedFileListRef loginItems = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
+    LSSharedFileListItemRef foundItem = findStartupItemInList(loginItems, bitcoinAppUrl);
+
+    if(fAutoStart && !foundItem) {
+        // add bitcoin app to startup item list
+        LSSharedFileListInsertItemURL(loginItems, kLSSharedFileListItemBeforeFirst, NULL, NULL, bitcoinAppUrl, NULL, NULL);
+    }
+    else if(!fAutoStart && foundItem) {
+        // remove item
+        LSSharedFileListItemRemove(loginItems, foundItem);
+    }
+    return true;
+}
+#else
 
 bool GetStartOnSystemStartup() { return false; }
 bool SetStartOnSystemStartup(bool fAutoStart) { return false; }
 
 #endif
+
+void saveWindowGeometry(const QString& strSetting, QWidget *parent)
+{
+    QSettings settings;
+    settings.setValue(strSetting + "Pos", parent->pos());
+    settings.setValue(strSetting + "Size", parent->size());
+}
+
+void restoreWindowGeometry(const QString& strSetting, const QSize& defaultSize, QWidget *parent)
+{
+    QSettings settings;
+    QPoint pos = settings.value(strSetting + "Pos").toPoint();
+    QSize size = settings.value(strSetting + "Size", defaultSize).toSize();
+
+    if (!pos.x() && !pos.y()) {
+        QRect screen = QApplication::desktop()->screenGeometry();
+        pos.setX((screen.width() - size.width()) / 2);
+        pos.setY((screen.height() - size.height()) / 2);
+    }
+
+    parent->resize(size);
+    parent->move(pos);
+}
 
 HelpMessageBox::HelpMessageBox(QWidget *parent) :
     QMessageBox(parent)
@@ -426,12 +598,13 @@ HelpMessageBox::HelpMessageBox(QWidget *parent) :
         tr("Usage:") + "\n" +
         "  bitcoin-qt [" + tr("command-line options") + "]                     " + "\n";
 
-    coreOptions = QString::fromStdString(HelpMessage());
+    coreOptions = QString::fromStdString(HelpMessage(HMM_BITCOIN_QT));
 
     uiOptions = tr("UI options") + ":\n" +
         "  -lang=<lang>           " + tr("Set language, for example \"de_DE\" (default: system locale)") + "\n" +
         "  -min                   " + tr("Start minimized") + "\n" +
-        "  -splash                " + tr("Show splash screen on startup (default: 1)") + "\n";
+        "  -splash                " + tr("Show splash screen on startup (default: 1)") + "\n" +
+        "  -choosedatadir         " + tr("Choose data directory on startup (default: 0)") + "\n";
 
     setWindowTitle(tr("Bitcoin-Qt"));
     setTextFormat(Qt::PlainText);
@@ -456,6 +629,12 @@ void HelpMessageBox::showOrPrint()
         // On other operating systems, print help text to console
         printToConsole();
 #endif
+}
+
+void setClipboard(const QString& str)
+{
+    QApplication::clipboard()->setText(str, QClipboard::Clipboard);
+    QApplication::clipboard()->setText(str, QClipboard::Selection);
 }
 
 } // namespace GUIUtil

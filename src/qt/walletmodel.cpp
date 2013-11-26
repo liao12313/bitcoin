@@ -1,14 +1,25 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include "walletmodel.h"
-#include "guiconstants.h"
-#include "optionsmodel.h"
+
 #include "addresstablemodel.h"
+#include "guiconstants.h"
 #include "transactiontablemodel.h"
 
+#include "base58.h"
+#include "db.h"
+#include "keystore.h"
+#include "main.h"
+#include "sync.h"
 #include "ui_interface.h"
 #include "wallet.h"
 #include "walletdb.h" // for BackupWallet
-#include "base58.h"
 
+#include <stdint.h>
+
+#include <QDebug>
 #include <QSet>
 #include <QTimer>
 
@@ -36,8 +47,19 @@ WalletModel::~WalletModel()
     unsubscribeFromCoreSignals();
 }
 
-qint64 WalletModel::getBalance() const
+qint64 WalletModel::getBalance(const CCoinControl *coinControl) const
 {
+    if (coinControl)
+    {
+        qint64 nBalance = 0;
+        std::vector<COutput> vCoins;
+        wallet->AvailableCoins(vCoins, true, coinControl);
+        BOOST_FOREACH(const COutput& out, vCoins)
+            nBalance += out.tx->vout[out.i].nValue;
+
+        return nBalance;
+    }
+
     return wallet->GetBalance();
 }
 
@@ -73,10 +95,10 @@ void WalletModel::updateStatus()
 
 void WalletModel::pollBalanceChanged()
 {
-    if(nBestHeight != cachedNumBlocks)
+    if(chainActive.Height() != cachedNumBlocks)
     {
         // Balance and number of transactions might have changed
-        cachedNumBlocks = nBestHeight;
+        cachedNumBlocks = chainActive.Height();
         checkBalanceChanged();
     }
 }
@@ -112,10 +134,11 @@ void WalletModel::updateTransaction(const QString &hash, int status)
     }
 }
 
-void WalletModel::updateAddressBook(const QString &address, const QString &label, bool isMine, int status)
+void WalletModel::updateAddressBook(const QString &address, const QString &label,
+        bool isMine, const QString &purpose, int status)
 {
     if(addressTableModel)
-        addressTableModel->updateEntry(address, label, isMine, status);
+        addressTableModel->updateEntry(address, label, isMine, purpose, status);
 }
 
 bool WalletModel::validateAddress(const QString &address)
@@ -124,104 +147,167 @@ bool WalletModel::validateAddress(const QString &address)
     return addressParsed.IsValid();
 }
 
-WalletModel::SendCoinsReturn WalletModel::sendCoins(const QList<SendCoinsRecipient> &recipients)
+WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransaction &transaction, const CCoinControl *coinControl)
 {
     qint64 total = 0;
-    QSet<QString> setAddress;
-    QString hex;
+    QList<SendCoinsRecipient> recipients = transaction.getRecipients();
+    std::vector<std::pair<CScript, int64_t> > vecSend;
 
     if(recipients.empty())
     {
         return OK;
     }
 
+    QSet<QString> setAddress; // Used to detect duplicates
+    int nAddresses = 0;
+
     // Pre-check input data for validity
     foreach(const SendCoinsRecipient &rcp, recipients)
     {
-        if(!validateAddress(rcp.address))
-        {
-            return InvalidAddress;
+        if (rcp.paymentRequest.IsInitialized())
+        {   // PaymentRequest...
+            int64_t subtotal = 0;
+            const payments::PaymentDetails& details = rcp.paymentRequest.getDetails();
+            for (int i = 0; i < details.outputs_size(); i++)
+            {
+                const payments::Output& out = details.outputs(i);
+                if (out.amount() <= 0) continue;
+                subtotal += out.amount();
+                const unsigned char* scriptStr = (const unsigned char*)out.script().data();
+                CScript scriptPubKey(scriptStr, scriptStr+out.script().size());
+                vecSend.push_back(std::pair<CScript, int64_t>(scriptPubKey, out.amount()));
+            }
+            if (subtotal <= 0)
+            {
+                return InvalidAmount;
+            }
+            total += subtotal;
         }
-        setAddress.insert(rcp.address);
+        else
+        {   // User-entered bitcoin address / amount:
+            if(!validateAddress(rcp.address))
+            {
+                return InvalidAddress;
+            }
+            if(rcp.amount <= 0)
+            {
+                return InvalidAmount;
+            }
+            setAddress.insert(rcp.address);
+            ++nAddresses;
 
-        if(rcp.amount <= 0)
-        {
-            return InvalidAmount;
+            CScript scriptPubKey;
+            scriptPubKey.SetDestination(CBitcoinAddress(rcp.address.toStdString()).Get());
+            vecSend.push_back(std::pair<CScript, int64_t>(scriptPubKey, rcp.amount));
+
+            total += rcp.amount;
         }
-        total += rcp.amount;
     }
-
-    if(recipients.size() > setAddress.size())
+    if(setAddress.size() != nAddresses)
     {
         return DuplicateAddress;
     }
 
-    if(total > getBalance())
+    qint64 nBalance = getBalance(coinControl);
+
+    if(total > nBalance)
     {
         return AmountExceedsBalance;
     }
 
-    if((total + nTransactionFee) > getBalance())
+    if((total + nTransactionFee) > nBalance)
     {
-        return SendCoinsReturn(AmountWithFeeExceedsBalance, nTransactionFee);
+        transaction.setTransactionFee(nTransactionFee);
+        return SendCoinsReturn(AmountWithFeeExceedsBalance);
     }
 
     {
         LOCK2(cs_main, wallet->cs_wallet);
 
-        // Sendmany
-        std::vector<std::pair<CScript, int64> > vecSend;
-        foreach(const SendCoinsRecipient &rcp, recipients)
-        {
-            CScript scriptPubKey;
-            scriptPubKey.SetDestination(CBitcoinAddress(rcp.address.toStdString()).Get());
-            vecSend.push_back(make_pair(scriptPubKey, rcp.amount));
-        }
+        transaction.newPossibleKeyChange(wallet);
+        int64_t nFeeRequired = 0;
+        std::string strFailReason;
 
-        CWalletTx wtx;
-        CReserveKey keyChange(wallet);
-        int64 nFeeRequired = 0;
-        bool fCreated = wallet->CreateTransaction(vecSend, wtx, keyChange, nFeeRequired);
+        CWalletTx *newTx = transaction.getTransaction();
+        CReserveKey *keyChange = transaction.getPossibleKeyChange();
+        bool fCreated = wallet->CreateTransaction(vecSend, *newTx, *keyChange, nFeeRequired, strFailReason, coinControl);
+        transaction.setTransactionFee(nFeeRequired);
 
         if(!fCreated)
         {
-            if((total + nFeeRequired) > wallet->GetBalance())
+            if((total + nFeeRequired) > nBalance)
             {
-                return SendCoinsReturn(AmountWithFeeExceedsBalance, nFeeRequired);
+                return SendCoinsReturn(AmountWithFeeExceedsBalance);
             }
+            emit message(tr("Send Coins"), QString::fromStdString(strFailReason),
+                         CClientUIInterface::MSG_ERROR);
             return TransactionCreationFailed;
         }
-        if(!uiInterface.ThreadSafeAskFee(nFeeRequired))
-        {
-            return Aborted;
-        }
-        if(!wallet->CommitTransaction(wtx, keyChange))
-        {
-            return TransactionCommitFailed;
-        }
-        hex = QString::fromStdString(wtx.GetHash().GetHex());
     }
 
-    // Add addresses / update labels that we've sent to to the address book
-    foreach(const SendCoinsRecipient &rcp, recipients)
+    return SendCoinsReturn(OK);
+}
+
+WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction &transaction)
+{
+    QByteArray transaction_array; /* store serialized transaction */
+
     {
-        std::string strAddress = rcp.address.toStdString();
-        CTxDestination dest = CBitcoinAddress(strAddress).Get();
-        std::string strLabel = rcp.label.toStdString();
+        LOCK2(cs_main, wallet->cs_wallet);
+        CWalletTx *newTx = transaction.getTransaction();
+
+        // Store PaymentRequests in wtx.vOrderForm in wallet.
+        foreach(const SendCoinsRecipient &rcp, transaction.getRecipients())
         {
-            LOCK(wallet->cs_wallet);
-
-            std::map<CTxDestination, std::string>::iterator mi = wallet->mapAddressBook.find(dest);
-
-            // Check if we have a new address or an updated label
-            if (mi == wallet->mapAddressBook.end() || mi->second != strLabel)
+            if (rcp.paymentRequest.IsInitialized())
             {
-                wallet->SetAddressBookName(dest, strLabel);
+                std::string key("PaymentRequest");
+                std::string value;
+                rcp.paymentRequest.SerializeToString(&value);
+                newTx->vOrderForm.push_back(make_pair(key, value));
             }
         }
+
+        CReserveKey *keyChange = transaction.getPossibleKeyChange();
+        if(!wallet->CommitTransaction(*newTx, *keyChange))
+            return TransactionCommitFailed;
+
+        CTransaction* t = (CTransaction*)newTx;
+        CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+        ssTx << *t;
+        transaction_array.append(&(ssTx[0]), ssTx.size());
     }
 
-    return SendCoinsReturn(OK, 0, hex);
+    // Add addresses / update labels that we've sent to to the address book,
+    // and emit coinsSent signal for each recipient
+    foreach(const SendCoinsRecipient &rcp, transaction.getRecipients())
+    {
+        // Don't touch the address book when we have a payment request
+        if (!rcp.paymentRequest.IsInitialized())
+        {
+            std::string strAddress = rcp.address.toStdString();
+            CTxDestination dest = CBitcoinAddress(strAddress).Get();
+            std::string strLabel = rcp.label.toStdString();
+            {
+                LOCK(wallet->cs_wallet);
+
+                std::map<CTxDestination, CAddressBookData>::iterator mi = wallet->mapAddressBook.find(dest);
+
+                // Check if we have a new address or an updated label
+                if (mi == wallet->mapAddressBook.end())
+                {
+                    wallet->SetAddressBook(dest, strLabel, "send");
+                }
+                else if (mi->second.name != strLabel)
+                {
+                    wallet->SetAddressBook(dest, strLabel, ""); // "" means don't change purpose
+                }
+            }
+        }
+        emit coinsSent(wallet, rcp, transaction_array);
+    }
+
+    return SendCoinsReturn(OK);
 }
 
 OptionsModel *WalletModel::getOptionsModel()
@@ -302,25 +388,34 @@ bool WalletModel::backupWallet(const QString &filename)
 // Handlers for core signals
 static void NotifyKeyStoreStatusChanged(WalletModel *walletmodel, CCryptoKeyStore *wallet)
 {
-    OutputDebugStringF("NotifyKeyStoreStatusChanged\n");
+    qDebug() << "NotifyKeyStoreStatusChanged";
     QMetaObject::invokeMethod(walletmodel, "updateStatus", Qt::QueuedConnection);
 }
 
-static void NotifyAddressBookChanged(WalletModel *walletmodel, CWallet *wallet, const CTxDestination &address, const std::string &label, bool isMine, ChangeType status)
+static void NotifyAddressBookChanged(WalletModel *walletmodel, CWallet *wallet,
+        const CTxDestination &address, const std::string &label, bool isMine,
+        const std::string &purpose, ChangeType status)
 {
-    OutputDebugStringF("NotifyAddressBookChanged %s %s isMine=%i status=%i\n", CBitcoinAddress(address).ToString().c_str(), label.c_str(), isMine, status);
+    QString strAddress = QString::fromStdString(CBitcoinAddress(address).ToString());
+    QString strLabel = QString::fromStdString(label);
+    QString strPurpose = QString::fromStdString(purpose);
+
+    qDebug() << "NotifyAddressBookChanged : " + strAddress + " " + strLabel + " isMine=" + QString::number(isMine) + " purpose=" + strPurpose + " status=" + QString::number(status);
     QMetaObject::invokeMethod(walletmodel, "updateAddressBook", Qt::QueuedConnection,
-                              Q_ARG(QString, QString::fromStdString(CBitcoinAddress(address).ToString())),
-                              Q_ARG(QString, QString::fromStdString(label)),
+                              Q_ARG(QString, strAddress),
+                              Q_ARG(QString, strLabel),
                               Q_ARG(bool, isMine),
+                              Q_ARG(QString, strPurpose),
                               Q_ARG(int, status));
 }
 
 static void NotifyTransactionChanged(WalletModel *walletmodel, CWallet *wallet, const uint256 &hash, ChangeType status)
 {
-    OutputDebugStringF("NotifyTransactionChanged %s status=%i\n", hash.GetHex().c_str(), status);
+    QString strHash = QString::fromStdString(hash.GetHex());
+
+    qDebug() << "NotifyTransactionChanged : " + strHash + " status= " + QString::number(status);
     QMetaObject::invokeMethod(walletmodel, "updateTransaction", Qt::QueuedConnection,
-                              Q_ARG(QString, QString::fromStdString(hash.GetHex())),
+                              Q_ARG(QString, strHash),
                               Q_ARG(int, status));
 }
 
@@ -328,7 +423,7 @@ void WalletModel::subscribeToCoreSignals()
 {
     // Connect signals to wallet
     wallet->NotifyStatusChanged.connect(boost::bind(&NotifyKeyStoreStatusChanged, this, _1));
-    wallet->NotifyAddressBookChanged.connect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5));
+    wallet->NotifyAddressBookChanged.connect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5, _6));
     wallet->NotifyTransactionChanged.connect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
 }
 
@@ -336,7 +431,7 @@ void WalletModel::unsubscribeFromCoreSignals()
 {
     // Disconnect signals from wallet
     wallet->NotifyStatusChanged.disconnect(boost::bind(&NotifyKeyStoreStatusChanged, this, _1));
-    wallet->NotifyAddressBookChanged.disconnect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5));
+    wallet->NotifyAddressBookChanged.disconnect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5, _6));
     wallet->NotifyTransactionChanged.disconnect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
 }
 
@@ -375,4 +470,73 @@ void WalletModel::UnlockContext::CopyFrom(const UnlockContext& rhs)
     // Transfer context; old object no longer relocks wallet
     *this = rhs;
     rhs.relock = false;
+}
+
+bool WalletModel::getPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
+{
+    return wallet->GetPubKey(address, vchPubKeyOut);
+}
+
+// returns a list of COutputs from COutPoints
+void WalletModel::getOutputs(const std::vector<COutPoint>& vOutpoints, std::vector<COutput>& vOutputs)
+{
+    BOOST_FOREACH(const COutPoint& outpoint, vOutpoints)
+    {
+        if (!wallet->mapWallet.count(outpoint.hash)) continue;
+        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, wallet->mapWallet[outpoint.hash].GetDepthInMainChain());
+        vOutputs.push_back(out);
+    }
+}
+
+// AvailableCoins + LockedCoins grouped by wallet address (put change in one group with wallet address)
+void WalletModel::listCoins(std::map<QString, std::vector<COutput> >& mapCoins) const
+{
+    std::vector<COutput> vCoins;
+    wallet->AvailableCoins(vCoins);
+
+    std::vector<COutPoint> vLockedCoins;
+    wallet->ListLockedCoins(vLockedCoins);
+
+    // add locked coins
+    BOOST_FOREACH(const COutPoint& outpoint, vLockedCoins)
+    {
+        if (!wallet->mapWallet.count(outpoint.hash)) continue;
+        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, wallet->mapWallet[outpoint.hash].GetDepthInMainChain());
+        vCoins.push_back(out);
+    }
+
+    BOOST_FOREACH(const COutput& out, vCoins)
+    {
+        COutput cout = out;
+
+        while (wallet->IsChange(cout.tx->vout[cout.i]) && cout.tx->vin.size() > 0 && wallet->IsMine(cout.tx->vin[0]))
+        {
+            if (!wallet->mapWallet.count(cout.tx->vin[0].prevout.hash)) break;
+            cout = COutput(&wallet->mapWallet[cout.tx->vin[0].prevout.hash], cout.tx->vin[0].prevout.n, 0);
+        }
+
+        CTxDestination address;
+        if(!ExtractDestination(cout.tx->vout[cout.i].scriptPubKey, address)) continue;
+        mapCoins[CBitcoinAddress(address).ToString().c_str()].push_back(out);
+    }
+}
+
+bool WalletModel::isLockedCoin(uint256 hash, unsigned int n) const
+{
+    return wallet->IsLockedCoin(hash, n);
+}
+
+void WalletModel::lockCoin(COutPoint& output)
+{
+    wallet->LockCoin(output);
+}
+
+void WalletModel::unlockCoin(COutPoint& output)
+{
+    wallet->UnlockCoin(output);
+}
+
+void WalletModel::listLockedCoins(std::vector<COutPoint>& vOutpts)
+{
+    wallet->ListLockedCoins(vOutpts);
 }

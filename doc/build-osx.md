@@ -1,38 +1,13 @@
-Mac OS X bitcoind build instructions
+Mac OS X Build Instructions and Notes
 ====================================
-
-Authors
--------
-
-* Laszlo Hanyecz <solar@heliacal.net>
-* Douglas Huff <dhuff@jrbobdobbs.org>
-* Colin Dean <cad@cad.cx>
-* Gavin Andresen <gavinandresen@gmail.com>
-
-License
--------
-
-Copyright (c) 2009-2012 Bitcoin Developers
-
-Distributed under the MIT/X11 software license, see the accompanying
-file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-This product includes software developed by the OpenSSL Project for use in
-the OpenSSL Toolkit (http://www.openssl.org/).
-
-This product includes cryptographic software written by
-Eric Young (eay@cryptsoft.com) and UPnP software written by Thomas Bernard.
+This guide will show you how to build bitcoind(headless client) for OSX.
 
 Notes
 -----
 
-See `doc/readme-qt.rst` for instructions on building Bitcoin-Qt, the
-graphical user interface.
-
-Tested on OS X 10.5 through 10.8 on Intel processors only. PPC is not
+* Tested on OS X 10.5 through 10.8 on Intel processors only. PPC is not
 supported because it is big-endian.
-
-All of the commands should be executed in a Terminal application. The
+* All of the commands should be executed in a Terminal application. The
 built-in one is located in `/Applications/Utilities`.
 
 Preparation
@@ -47,13 +22,13 @@ be done in `Xcode > Preferences > Downloads > Components` and generally must
 be re-done or updated every time Xcode is updated.
 
 There's an assumption that you already have `git` installed, as well. If
-not, it's the path of least resistance to install Github for Mac
+not, it's the path of least resistance to install [Github for Mac](https://mac.github.com/)
 (OS X 10.7+) or
 [Git for OS X](https://code.google.com/p/git-osx-installer/). It is also
 available via Homebrew or MacPorts.
 
-You will also need to install [Homebrew](http://mxcl.github.com/homebrew/)
-or [MacPorts](http://www.macports.org/) in order to install library
+You will also need to install [Homebrew](http://mxcl.github.io/homebrew/)
+or [MacPorts](https://www.macports.org/) in order to install library
 dependencies. It's largely a religious decision which to choose, but, as of
 December 2012, MacPorts is a little easier because you can just install the
 dependencies immediately - no other work required. If you're unsure, read
@@ -81,12 +56,13 @@ Installing the dependencies using MacPorts is very straightforward.
 
 2.  Build bitcoind:
 
-        cd src
-        make -f makefile.osx
+        ./autogen.sh
+        ./configure
+        make
 
 3.  It is a good idea to build and run the unit tests, too:
 
-        make -f makefile.osx test
+        make test
 
 Instructions: HomeBrew
 ----------------------
@@ -114,22 +90,15 @@ Rerunning "openssl version" should now return the correct version.
         git clone git@github.com:bitcoin/bitcoin.git bitcoin
         cd bitcoin
 
-2.  Modify source in order to pick up the `openssl` library.
+2.  Build bitcoind:
 
-    Edit `makefile.osx` to account for library location differences. There's a
-    diff in `contrib/homebrew/makefile.osx.patch` that shows what you need to
-    change, or you can just patch by doing
+        ./autogen.sh
+        ./configure
+        make
 
-        patch -p1 < contrib/homebrew/makefile.osx.patch
+3.  It is a good idea to build and run the unit tests, too:
 
-3.  Build bitcoind:
-
-        cd src
-        make -f makefile.osx
-
-4.  It is a good idea to build and run the unit tests, too:
-
-        make -f makefile.osx test
+        make test
 
 Creating a release build
 ------------------------

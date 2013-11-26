@@ -1,19 +1,22 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include "signverifymessagedialog.h"
 #include "ui_signverifymessagedialog.h"
 
 #include "addressbookpage.h"
-#include "base58.h"
 #include "guiutil.h"
-#include "init.h"
-#include "main.h"
-#include "optionsmodel.h"
 #include "walletmodel.h"
-#include "wallet.h"
 
-#include <QClipboard>
+#include "base58.h"
+#include "init.h"
+#include "wallet.h"
 
 #include <string>
 #include <vector>
+
+#include <QClipboard>
 
 SignVerifyMessageDialog::SignVerifyMessageDialog(QWidget *parent) :
     QDialog(parent),
@@ -22,8 +25,7 @@ SignVerifyMessageDialog::SignVerifyMessageDialog(QWidget *parent) :
 {
     ui->setupUi(this);
 
-#if (QT_VERSION >= 0x040700)
-    /* Do not move this to the XML file, Qt before 4.7 will choke on it */
+#if QT_VERSION >= 0x040700
     ui->addressIn_SM->setPlaceholderText(tr("Enter a Bitcoin address (e.g. 1NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L)"));
     ui->signatureOut_SM->setPlaceholderText(tr("Click \"Sign Message\" to generate signature"));
 
@@ -70,7 +72,6 @@ void SignVerifyMessageDialog::setAddress_VM(const QString &address)
 void SignVerifyMessageDialog::showTab_SM(bool fShow)
 {
     ui->tabWidget->setCurrentIndex(0);
-
     if (fShow)
         this->show();
 }
@@ -86,7 +87,7 @@ void SignVerifyMessageDialog::on_addressBookButton_SM_clicked()
 {
     if (model && model->getAddressTableModel())
     {
-        AddressBookPage dlg(AddressBookPage::ForSending, AddressBookPage::ReceivingTab, this);
+        AddressBookPage dlg(AddressBookPage::ForSelection, AddressBookPage::ReceivingTab, this);
         dlg.setModel(model->getAddressTableModel());
         if (dlg.exec())
         {
@@ -102,6 +103,9 @@ void SignVerifyMessageDialog::on_pasteButton_SM_clicked()
 
 void SignVerifyMessageDialog::on_signMessageButton_SM_clicked()
 {
+    if (!model)
+        return;
+
     /* Clear old signature to ensure users don't get confused on error with an old signature displayed */
     ui->signatureOut_SM->clear();
 
@@ -158,7 +162,7 @@ void SignVerifyMessageDialog::on_signMessageButton_SM_clicked()
 
 void SignVerifyMessageDialog::on_copySignatureButton_SM_clicked()
 {
-    QApplication::clipboard()->setText(ui->signatureOut_SM->text());
+    GUIUtil::setClipboard(ui->signatureOut_SM->text());
 }
 
 void SignVerifyMessageDialog::on_clearButton_SM_clicked()
@@ -175,7 +179,7 @@ void SignVerifyMessageDialog::on_addressBookButton_VM_clicked()
 {
     if (model && model->getAddressTableModel())
     {
-        AddressBookPage dlg(AddressBookPage::ForSending, AddressBookPage::SendingTab, this);
+        AddressBookPage dlg(AddressBookPage::ForSelection, AddressBookPage::SendingTab, this);
         dlg.setModel(model->getAddressTableModel());
         if (dlg.exec())
         {
@@ -218,8 +222,8 @@ void SignVerifyMessageDialog::on_verifyMessageButton_VM_clicked()
     ss << strMessageMagic;
     ss << ui->messageIn_VM->document()->toPlainText().toStdString();
 
-    CKey key;
-    if (!key.SetCompactSignature(Hash(ss.begin(), ss.end()), vchSig))
+    CPubKey pubkey;
+    if (!pubkey.RecoverCompact(Hash(ss.begin(), ss.end()), vchSig))
     {
         ui->signatureIn_VM->setValid(false);
         ui->statusLabel_VM->setStyleSheet("QLabel { color: red; }");
@@ -227,7 +231,7 @@ void SignVerifyMessageDialog::on_verifyMessageButton_VM_clicked()
         return;
     }
 
-    if (!(CBitcoinAddress(key.GetPubKey().GetID()) == addr))
+    if (!(CBitcoinAddress(pubkey.GetID()) == addr))
     {
         ui->statusLabel_VM->setStyleSheet("QLabel { color: red; }");
         ui->statusLabel_VM->setText(QString("<nobr>") + tr("Message verification failed.") + QString("</nobr>"));
