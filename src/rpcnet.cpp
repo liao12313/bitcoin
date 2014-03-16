@@ -1,17 +1,19 @@
-// Copyright (c) 2009-2013 The Bitcoin developers
+// Copyright (c) 2009-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "rpcserver.h"
 
-
-#include "bitcoinrpc.h"
+#include "main.h"
 #include "net.h"
 #include "netbase.h"
 #include "protocol.h"
 #include "sync.h"
 #include "util.h"
-
-#include <inttypes.h>
+#ifdef ENABLE_WALLET
+#include "init.h" // for getinfo
+#include "wallet.h" // for getinfo
+#endif
 
 #include <boost/foreach.hpp>
 #include "json/json_spirit_value.h"
@@ -43,7 +45,7 @@ Value ping(const Array& params, bool fHelp)
             "ping\n"
             "\nRequests that a ping be sent to all other nodes, to measure ping time.\n"
             "Results provided in getpeerinfo, pingtime and pingwait fields are decimal seconds.\n"
-            "Ping command is handled in queue with all other commands, so it measures processing backlog, not just network ping."
+            "Ping command is handled in queue with all other commands, so it measures processing backlog, not just network ping.\n"
             "\nExamples:\n"
             + HelpExampleCli("ping", "")
             + HelpExampleRpc("ping", "")
@@ -112,11 +114,12 @@ Value getpeerinfo(const Array& params, bool fHelp)
 
     BOOST_FOREACH(const CNodeStats& stats, vstats) {
         Object obj;
-
+        CNodeStateStats statestats;
+        bool fStateStats = GetNodeStateStats(stats.nodeid, statestats);
         obj.push_back(Pair("addr", stats.addrName));
         if (!(stats.addrLocal.empty()))
             obj.push_back(Pair("addrlocal", stats.addrLocal));
-        obj.push_back(Pair("services", strprintf("%08"PRIx64, stats.nServices)));
+        obj.push_back(Pair("services", strprintf("%08x", stats.nServices)));
         obj.push_back(Pair("lastsend", (boost::int64_t)stats.nLastSend));
         obj.push_back(Pair("lastrecv", (boost::int64_t)stats.nLastRecv));
         obj.push_back(Pair("bytessent", (boost::int64_t)stats.nSendBytes));
@@ -126,10 +129,15 @@ Value getpeerinfo(const Array& params, bool fHelp)
         if (stats.dPingWait > 0.0)
             obj.push_back(Pair("pingwait", stats.dPingWait));
         obj.push_back(Pair("version", stats.nVersion));
-        obj.push_back(Pair("subver", stats.strSubVer));
+        // Use the sanitized form of subver here, to avoid tricksy remote peers from
+        // corrupting or modifiying the JSON output by putting special characters in
+        // their ver message.
+        obj.push_back(Pair("subver", stats.cleanSubVer));
         obj.push_back(Pair("inbound", stats.fInbound));
         obj.push_back(Pair("startingheight", stats.nStartingHeight));
-        obj.push_back(Pair("banscore", stats.nMisbehavior));
+        if (fStateStats) {
+            obj.push_back(Pair("banscore", statestats.nMisbehavior));
+        }
         if (stats.fSyncNode)
             obj.push_back(Pair("syncnode", true));
 
@@ -245,15 +253,17 @@ Value getaddednodeinfo(const Array& params, bool fHelp)
             throw JSONRPCError(RPC_CLIENT_NODE_NOT_ADDED, "Error: Node has not been added.");
     }
 
+    Array ret;
     if (!fDns)
     {
-        Object ret;
         BOOST_FOREACH(string& strAddNode, laddedNodes)
-            ret.push_back(Pair("addednode", strAddNode));
+        {
+            Object obj;
+            obj.push_back(Pair("addednode", strAddNode));
+            ret.push_back(obj);
+        }
         return ret;
     }
-
-    Array ret;
 
     list<pair<string, vector<CService> > > laddedAddreses(0);
     BOOST_FOREACH(string& strAddNode, laddedNodes)
@@ -314,7 +324,7 @@ Value getnettotals(const Array& params, bool fHelp)
             "\nResult:\n"
             "{\n"
             "  \"totalbytesrecv\": n,   (numeric) Total bytes received\n"
-            "  \"totalbytessent\": n,   (numeric) Total Bytes sent\n"
+            "  \"totalbytessent\": n,   (numeric) Total bytes sent\n"
             "  \"timemillis\": t        (numeric) Total cpu time\n"
             "}\n"
             "\nExamples:\n"
