@@ -38,6 +38,7 @@ static map<string, boost::shared_ptr<deadline_timer> > deadlineTimers;
 static ssl::context* rpc_ssl_context = NULL;
 static boost::thread_group* rpc_worker_group = NULL;
 static boost::asio::io_service::work *rpc_dummy_work = NULL;
+static std::vector<CSubNet> rpc_allow_subnets; //!< List of subnets to allow RPC connections from
 
 void RPCTypeCheck(const Array& params,
                   const list<Value_type>& typesExpected,
@@ -222,86 +223,97 @@ Value stop(const Array& params, bool fHelp)
 static const CRPCCommand vRPCCommands[] =
 { //  name                      actor (function)         okSafeMode threadSafe reqWallet
   //  ------------------------  -----------------------  ---------- ---------- ---------
+    /* Overall control/query calls */
+    { "getinfo",                &getinfo,                true,      false,      false }, /* uses wallet if enabled */
     { "help",                   &help,                   true,      true,       false },
     { "stop",                   &stop,                   true,      true,       false },
-    { "getblockcount",          &getblockcount,          true,      false,      false },
-    { "getbestblockhash",       &getbestblockhash,       true,      false,      false },
-    { "getconnectioncount",     &getconnectioncount,     true,      false,      false },
-    { "getpeerinfo",            &getpeerinfo,            true,      false,      false },
-    { "ping",                   &ping,                   true,      false,      false },
+
+    /* P2P networking */
+    { "getnetworkinfo",         &getnetworkinfo,         true,      false,      false },
     { "addnode",                &addnode,                true,      true,       false },
     { "getaddednodeinfo",       &getaddednodeinfo,       true,      true,       false },
+    { "getconnectioncount",     &getconnectioncount,     true,      false,      false },
     { "getnettotals",           &getnettotals,           true,      true,       false },
-    { "getdifficulty",          &getdifficulty,          true,      false,      false },
-    { "getinfo",                &getinfo,                true,      false,      false },
-    { "getrawmempool",          &getrawmempool,          true,      false,      false },
+    { "getpeerinfo",            &getpeerinfo,            true,      false,      false },
+    { "ping",                   &ping,                   true,      false,      false },
+
+    /* Block chain and UTXO */
+    { "getblockchaininfo",      &getblockchaininfo,      true,      false,      false },
+    { "getbestblockhash",       &getbestblockhash,       true,      false,      false },
+    { "getblockcount",          &getblockcount,          true,      false,      false },
     { "getblock",               &getblock,               false,     false,      false },
     { "getblockhash",           &getblockhash,           false,     false,      false },
-    { "getrawtransaction",      &getrawtransaction,      false,     false,      false },
-    { "createrawtransaction",   &createrawtransaction,   false,     false,      false },
-    { "decoderawtransaction",   &decoderawtransaction,   false,     false,      false },
-    { "decodescript",           &decodescript,           false,     false,      false },
-    { "signrawtransaction",     &signrawtransaction,     false,     false,      false },
-    { "sendrawtransaction",     &sendrawtransaction,     false,     false,      false },
-    { "gettxoutsetinfo",        &gettxoutsetinfo,        true,      false,      false },
+    { "getdifficulty",          &getdifficulty,          true,      false,      false },
+    { "getrawmempool",          &getrawmempool,          true,      false,      false },
     { "gettxout",               &gettxout,               true,      false,      false },
+    { "gettxoutsetinfo",        &gettxoutsetinfo,        true,      false,      false },
     { "verifychain",            &verifychain,            true,      false,      false },
 
     /* Mining */
-    { "getnetworkhashps",       &getnetworkhashps,       true,      false,      false },
-    { "getmininginfo",          &getmininginfo,          true,      false,      false },
     { "getblocktemplate",       &getblocktemplate,       true,      false,      false },
+    { "getmininginfo",          &getmininginfo,          true,      false,      false },
+    { "getnetworkhashps",       &getnetworkhashps,       true,      false,      false },
     { "submitblock",            &submitblock,            false,     false,      false },
-    { "validateaddress",        &validateaddress,        true,      false,      false },
+
+    /* Raw transactions */
+    { "createrawtransaction",   &createrawtransaction,   false,     false,      false },
+    { "decoderawtransaction",   &decoderawtransaction,   false,     false,      false },
+    { "decodescript",           &decodescript,           false,     false,      false },
+    { "getrawtransaction",      &getrawtransaction,      false,     false,      false },
+    { "sendrawtransaction",     &sendrawtransaction,     false,     false,      false },
+    { "signrawtransaction",     &signrawtransaction,     false,     false,      false }, /* uses wallet if enabled */
+
+    /* Utility functions */
     { "createmultisig",         &createmultisig,         true,      true ,      false },
+    { "validateaddress",        &validateaddress,        true,      false,      false }, /* uses wallet if enabled */
     { "verifymessage",          &verifymessage,          false,     false,      false },
 
 #ifdef ENABLE_WALLET
     /* Wallet */
-    { "getnewaddress",          &getnewaddress,          true,      false,      true },
+    { "addmultisigaddress",     &addmultisigaddress,     false,     false,      true },
+    { "backupwallet",           &backupwallet,           true,      false,      true },
+    { "dumpprivkey",            &dumpprivkey,            true,      false,      true },
+    { "dumpwallet",             &dumpwallet,             true,      false,      true },
+    { "encryptwallet",          &encryptwallet,          false,     false,      true },
     { "getaccountaddress",      &getaccountaddress,      true,      false,      true },
-    { "getrawchangeaddress",    &getrawchangeaddress,    true,      false,      true },
-    { "setaccount",             &setaccount,             true,      false,      true },
     { "getaccount",             &getaccount,             false,     false,      true },
     { "getaddressesbyaccount",  &getaddressesbyaccount,  true,      false,      true },
-    { "sendtoaddress",          &sendtoaddress,          false,     false,      true },
-    { "getreceivedbyaddress",   &getreceivedbyaddress,   false,     false,      true },
-    { "getreceivedbyaccount",   &getreceivedbyaccount,   false,     false,      true },
-    { "listreceivedbyaddress",  &listreceivedbyaddress,  false,     false,      true },
-    { "listreceivedbyaccount",  &listreceivedbyaccount,  false,     false,      true },
-    { "backupwallet",           &backupwallet,           true,      false,      true },
-    { "keypoolrefill",          &keypoolrefill,          true,      false,      true },
-    { "walletpassphrase",       &walletpassphrase,       true,      false,      true },
-    { "walletpassphrasechange", &walletpassphrasechange, false,     false,      true },
-    { "walletlock",             &walletlock,             true,      false,      true },
-    { "encryptwallet",          &encryptwallet,          false,     false,      true },
     { "getbalance",             &getbalance,             false,     false,      true },
+    { "getnewaddress",          &getnewaddress,          true,      false,      true },
+    { "getrawchangeaddress",    &getrawchangeaddress,    true,      false,      true },
+    { "getreceivedbyaccount",   &getreceivedbyaccount,   false,     false,      true },
+    { "getreceivedbyaddress",   &getreceivedbyaddress,   false,     false,      true },
+    { "gettransaction",         &gettransaction,         false,     false,      true },
     { "getunconfirmedbalance",  &getunconfirmedbalance,  false,     false,      true },
+    { "getwalletinfo",          &getwalletinfo,          true,      false,      true },
+    { "importprivkey",          &importprivkey,          false,     false,      true },
+    { "importwallet",           &importwallet,           false,     false,      true },
+    { "keypoolrefill",          &keypoolrefill,          true,      false,      true },
+    { "listaccounts",           &listaccounts,           false,     false,      true },
+    { "listaddressgroupings",   &listaddressgroupings,   false,     false,      true },
+    { "listlockunspent",        &listlockunspent,        false,     false,      true },
+    { "listreceivedbyaccount",  &listreceivedbyaccount,  false,     false,      true },
+    { "listreceivedbyaddress",  &listreceivedbyaddress,  false,     false,      true },
+    { "listsinceblock",         &listsinceblock,         false,     false,      true },
+    { "listtransactions",       &listtransactions,       false,     false,      true },
+    { "listunspent",            &listunspent,            false,     false,      true },
+    { "lockunspent",            &lockunspent,            false,     false,      true },
     { "move",                   &movecmd,                false,     false,      true },
     { "sendfrom",               &sendfrom,               false,     false,      true },
     { "sendmany",               &sendmany,               false,     false,      true },
-    { "addmultisigaddress",     &addmultisigaddress,     false,     false,      true },
-    { "gettransaction",         &gettransaction,         false,     false,      true },
-    { "listtransactions",       &listtransactions,       false,     false,      true },
-    { "listaddressgroupings",   &listaddressgroupings,   false,     false,      true },
-    { "signmessage",            &signmessage,            false,     false,      true },
-    { "listaccounts",           &listaccounts,           false,     false,      true },
-    { "listsinceblock",         &listsinceblock,         false,     false,      true },
-    { "dumpprivkey",            &dumpprivkey,            true,      false,      true },
-    { "dumpwallet",             &dumpwallet,             true,      false,      true },
-    { "importprivkey",          &importprivkey,          false,     false,      true },
-    { "importwallet",           &importwallet,           false,     false,      true },
-    { "listunspent",            &listunspent,            false,     false,      true },
-    { "lockunspent",            &lockunspent,            false,     false,      true },
-    { "listlockunspent",        &listlockunspent,        false,     false,      true },
+    { "sendtoaddress",          &sendtoaddress,          false,     false,      true },
+    { "setaccount",             &setaccount,             true,      false,      true },
     { "settxfee",               &settxfee,               false,     false,      true },
-    { "getwalletinfo",          &getwalletinfo,          true,      false,      true },
+    { "signmessage",            &signmessage,            false,     false,      true },
+    { "walletlock",             &walletlock,             true,      false,      true },
+    { "walletpassphrasechange", &walletpassphrasechange, false,     false,      true },
+    { "walletpassphrase",       &walletpassphrase,       true,      false,      true },
 
     /* Wallet-enabled mining */
     { "getgenerate",            &getgenerate,            true,      false,      false },
-    { "setgenerate",            &setgenerate,            true,      true,       false },
     { "gethashespersec",        &gethashespersec,        true,      false,      false },
-    { "getwork",                &getwork,                true,      false,      true },
+    { "getwork",                &getwork,                true,      false,      true  },
+    { "setgenerate",            &setgenerate,            true,      true,       false },
 #endif // ENABLE_WALLET
 };
 
@@ -347,25 +359,33 @@ void ErrorReply(std::ostream& stream, const Object& objError, const Value& id)
     stream << HTTPReply(nStatus, strReply, false) << std::flush;
 }
 
-bool ClientAllowed(const boost::asio::ip::address& address)
+CNetAddr BoostAsioToCNetAddr(boost::asio::ip::address address)
 {
+    CNetAddr netaddr;
     // Make sure that IPv4-compatible and IPv4-mapped IPv6 addresses are treated as IPv4 addresses
     if (address.is_v6()
      && (address.to_v6().is_v4_compatible()
       || address.to_v6().is_v4_mapped()))
-        return ClientAllowed(address.to_v6().to_v4());
+        address = address.to_v6().to_v4();
 
-    if (address == asio::ip::address_v4::loopback()
-     || address == asio::ip::address_v6::loopback()
-     || (address.is_v4()
-         // Check whether IPv4 addresses match 127.0.0.0/8 (loopback subnet)
-      && (address.to_v4().to_ulong() & 0xff000000) == 0x7f000000))
-        return true;
+    if(address.is_v4())
+    {
+        boost::asio::ip::address_v4::bytes_type bytes = address.to_v4().to_bytes();
+        netaddr.SetRaw(NET_IPV4, &bytes[0]);
+    }
+    else
+    {
+        boost::asio::ip::address_v6::bytes_type bytes = address.to_v6().to_bytes();
+        netaddr.SetRaw(NET_IPV6, &bytes[0]);
+    }
+    return netaddr;
+}
 
-    const string strAddress = address.to_string();
-    const vector<string>& vAllow = mapMultiArgs["-rpcallowip"];
-    BOOST_FOREACH(string strAllow, vAllow)
-        if (WildcardMatch(strAddress, strAllow))
+bool ClientAllowed(const boost::asio::ip::address& address)
+{
+    CNetAddr netaddr = BoostAsioToCNetAddr(address);
+    BOOST_FOREACH(const CSubNet &subnet, rpc_allow_subnets)
+        if (subnet.Match(netaddr))
             return true;
     return false;
 }
@@ -491,6 +511,31 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
 
 void StartRPCThreads()
 {
+    rpc_allow_subnets.clear();
+    rpc_allow_subnets.push_back(CSubNet("127.0.0.0/8")); // always allow IPv4 local subnet
+    rpc_allow_subnets.push_back(CSubNet("::1")); // always allow IPv6 localhost
+    if (mapMultiArgs.count("-rpcallowip"))
+    {
+        const vector<string>& vAllow = mapMultiArgs["-rpcallowip"];
+        BOOST_FOREACH(string strAllow, vAllow)
+        {
+            CSubNet subnet(strAllow);
+            if(!subnet.IsValid())
+            {
+                uiInterface.ThreadSafeMessageBox(
+                    strprintf("Invalid -rpcallowip subnet specification: %s", strAllow),
+                    "", CClientUIInterface::MSG_ERROR);
+                StartShutdown();
+                return;
+            }
+            rpc_allow_subnets.push_back(subnet);
+        }
+    }
+    std::string strAllowed;
+    BOOST_FOREACH(const CSubNet &subnet, rpc_allow_subnets)
+        strAllowed += subnet.ToString() + " ";
+    LogPrint("rpc", "Allowing RPC connections from: %s\n", strAllowed);
+
     strRPCUserColonPass = mapArgs["-rpcuser"] + ":" + mapArgs["-rpcpassword"];
     if (((mapArgs["-rpcpassword"] == "") ||
          (mapArgs["-rpcuser"] == mapArgs["-rpcpassword"])) && Params().RequireRPCPassword())
@@ -732,7 +777,7 @@ static string JSONRPCExecBatch(const Array& vReq)
 void ServiceConnection(AcceptedConnection *conn)
 {
     bool fRun = true;
-    while (fRun)
+    while (fRun && !ShutdownRequested())
     {
         int nProto = 0;
         map<string, string> mapHeaders;
