@@ -430,7 +430,7 @@ bool AddOrphanTx(const CTransaction& tx)
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
         mapOrphanTransactionsByPrev[txin.prevout.hash].insert(hash);
 
-    LogPrint("mempool", "stored orphan tx %s (mapsz %"PRIszu")\n", hash.ToString(),
+    LogPrint("mempool", "stored orphan tx %s (mapsz %u)\n", hash.ToString(),
         mapOrphanTransactions.size());
     return true;
 }
@@ -2941,6 +2941,24 @@ bool static LoadBlockIndexDB()
     if (pblocktree->ReadBlockFileInfo(nLastBlockFile, infoLastBlockFile))
         LogPrintf("LoadBlockIndexDB(): last block file info: %s\n", infoLastBlockFile.ToString());
 
+    // Check presence of blk files
+    LogPrintf("Checking all blk files are present...\n");
+    set<int> setBlkDataFiles;
+    BOOST_FOREACH(const PAIRTYPE(uint256, CBlockIndex*)& item, mapBlockIndex)
+    {
+        CBlockIndex* pindex = item.second;
+        if (pindex->nStatus & BLOCK_HAVE_DATA) {
+            setBlkDataFiles.insert(pindex->nFile);
+        }
+    }
+    for (std::set<int>::iterator it = setBlkDataFiles.begin(); it != setBlkDataFiles.end(); it++)
+    {
+        CDiskBlockPos pos(*it, 0);
+        if (!CAutoFile(OpenBlockFile(pos, true), SER_DISK, CLIENT_VERSION)) {
+            return false;
+        }
+    }
+
     // Check whether we need to continue reindexing
     bool fReindexing = false;
     pblocktree->ReadReindexing(fReindexing);
@@ -3136,7 +3154,7 @@ void PrintBlockTree()
         // print item
         CBlock block;
         ReadBlockFromDisk(block, pindex);
-        LogPrintf("%d (blk%05u.dat:0x%x)  %s  tx %"PRIszu"\n",
+        LogPrintf("%d (blk%05u.dat:0x%x)  %s  tx %u\n",
             pindex->nHeight,
             pindex->GetBlockPos().nFile, pindex->GetBlockPos().nPos,
             DateTimeStrFormat("%Y-%m-%d %H:%M:%S", block.GetBlockTime()),
@@ -3373,7 +3391,7 @@ void static ProcessGetData(CNode* pfrom)
                 {
                     // Send block from disk
                     CBlock block;
-                    ReadBlockFromDisk(block, (*mi).second);
+                    assert(ReadBlockFromDisk(block, (*mi).second));
                     if (inv.type == MSG_BLOCK)
                         pfrom->PushMessage("block", block);
                     else // MSG_FILTERED_BLOCK)
@@ -3463,14 +3481,17 @@ void static ProcessGetData(CNode* pfrom)
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
-    LogPrint("net", "received: %s (%"PRIszu" bytes)\n", strCommand, vRecv.size());
+    LogPrint("net", "received: %s (%u bytes)\n", strCommand, vRecv.size());
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
         LogPrintf("dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
 
-    State(pfrom->GetId())->nLastBlockProcess = GetTimeMicros();
+    {
+        LOCK(cs_main);
+        State(pfrom->GetId())->nLastBlockProcess = GetTimeMicros();
+    }
 
 
 
@@ -3604,7 +3625,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vAddr.size() > 1000)
         {
             Misbehaving(pfrom->GetId(), 20);
-            return error("message addr size() = %"PRIszu"", vAddr.size());
+            return error("message addr size() = %u", vAddr.size());
         }
 
         // Store the new addresses
@@ -3667,7 +3688,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vInv.size() > MAX_INV_SZ)
         {
             Misbehaving(pfrom->GetId(), 20);
-            return error("message inv size() = %"PRIszu"", vInv.size());
+            return error("message inv size() = %u", vInv.size());
         }
 
         LOCK(cs_main);
@@ -3706,11 +3727,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vInv.size() > MAX_INV_SZ)
         {
             Misbehaving(pfrom->GetId(), 20);
-            return error("message getdata size() = %"PRIszu"", vInv.size());
+            return error("message getdata size() = %u", vInv.size());
         }
 
         if (fDebug || (vInv.size() != 1))
-            LogPrint("net", "received getdata (%"PRIszu" invsz)\n", vInv.size());
+            LogPrint("net", "received getdata (%u invsz)\n", vInv.size());
 
         if ((fDebug && vInv.size() > 0) || (vInv.size() == 1))
             LogPrint("net", "received getdata for: %s\n", vInv[0].ToString());
@@ -3818,7 +3839,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             vEraseQueue.push_back(inv.hash);
 
 
-            LogPrint("mempool", "AcceptToMemoryPool: %s %s : accepted %s (poolsz %"PRIszu")\n",
+            LogPrint("mempool", "AcceptToMemoryPool: %s %s : accepted %s (poolsz %u)\n",
                 pfrom->addr.ToString(), pfrom->cleanSubVer,
                 tx.GetHash().ToString(),
                 mempool.mapTx.size());
@@ -4003,7 +4024,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
 
         if (!(sProblem.empty())) {
-            LogPrint("net", "pong %s %s: %s, %x expected, %x received, %"PRIszu" bytes\n",
+            LogPrint("net", "pong %s %s: %s, %x expected, %x received, %u bytes\n",
                 pfrom->addr.ToString(),
                 pfrom->cleanSubVer,
                 sProblem,
@@ -4138,7 +4159,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 bool ProcessMessages(CNode* pfrom)
 {
     //if (fDebug)
-    //    LogPrintf("ProcessMessages(%"PRIszu" messages)\n", pfrom->vRecvMsg.size());
+    //    LogPrintf("ProcessMessages(%u messages)\n", pfrom->vRecvMsg.size());
 
     //
     // Message format
@@ -4166,7 +4187,7 @@ bool ProcessMessages(CNode* pfrom)
         CNetMessage& msg = *it;
 
         //if (fDebug)
-        //    LogPrintf("ProcessMessages(message %u msgsz, %"PRIszu" bytes, complete:%s)\n",
+        //    LogPrintf("ProcessMessages(message %u msgsz, %u bytes, complete:%s)\n",
         //            msg.hdr.nMessageSize, msg.vRecv.size(),
         //            msg.complete() ? "Y" : "N");
 
@@ -4445,7 +4466,7 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             uint256 hash = state.vBlocksToDownload.front();
             vGetData.push_back(CInv(MSG_BLOCK, hash));
             MarkBlockAsInFlight(pto->GetId(), hash);
-            LogPrint("net", "Requesting block %s from %s\n", hash.ToString().c_str(), state.name.c_str());
+            LogPrint("net", "Requesting block %s from %s\n", hash.ToString(), state.name);
             if (vGetData.size() >= 1000)
             {
                 pto->PushMessage("getdata", vGetData);
