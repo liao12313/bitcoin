@@ -6,13 +6,13 @@ Git subtree of [https://github.com/jgarzik/python-bitcoinrpc](https://github.com
 Changes to python-bitcoinrpc should be made upstream, and then
 pulled here using git subtree.
 
-### [skeleton.py](skeleton.py)
-Copy this to create new regression tests.
+### [test_framework.py](test_framework.py)
+Base class for new regression tests.
 
 ### [listtransactions.py](listtransactions.py)
 Tests for the listtransactions RPC call.
 
-### [util.py](util.sh)
+### [util.py](util.py)
 Generally useful functions.
 
 Bash-based tests, to be ported to Python:

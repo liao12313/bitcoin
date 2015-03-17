@@ -20,14 +20,6 @@ https://github.com/mingwandroid/toolchain4
 In order to build a working toolchain, the following source packages are needed
 from Apple: cctools, dyld, and ld64.
 
-Beware. This part is ugly. Very very very ugly. In the future, this should be
-broken out into a new repository and cleaned up. Additionally, the binaries
-only work when built as x86 and not x86_64. This is an especially nasty
-limitation because it must be linked with the toolchain's libLTO.so, meaning
-that the entire toolchain must be x86. Gitian x86_64 should not be used until
-this has been fixed, because it would mean that several native dependencies
-(openssl, libuuid, etc) would need to be built as x86 first.
-
 These tools inject timestamps by default, which produce non-deterministic
 binaries. The ZERO_AR_DATE environment variable is used to disable that.
 
@@ -37,11 +29,16 @@ originally done in toolchain4.
 
 To complicate things further, all builds must target an Apple SDK. These SDKs
 are free to download, but not redistributable.
-To obtain it, register for a developer account, then download xcode_3.2.6_and_ios_sdk_4.3.dmg:
-https://developer.apple.com/devcenter/download.action?path=/Developer_Tools/xcode_3.2.6_and_ios_sdk_4.3__final/xcode_3.2.6_and_ios_sdk_4.3.dmg
-This file is several gigabytes in size, but only a single .pkg file inside is
-needed (MacOSX10.6.pkg). From Linux, 7-zip can be used to extract this file.
-The DMG can then be discarded.
+To obtain it, register for a developer account, then download the XCode 6.1.1 dmg:
+https://developer.apple.com/downloads/download.action?path=Developer_Tools/xcode_6.1.1/xcode_6.1.1.dmg
+
+This file is several gigabytes in size, but only a single directory inside is
+needed: Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk
+
+Unfortunately, the usual linux tools (7zip, hpmount, loopback mount) are incapable of opening this file.
+To create a tarball suitable for gitian input, mount the dmg in OSX, then create it with:
+  $ tar -C /Volumes/Xcode/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/ -czf MacOSX10.9.sdk.tar.gz MacOSX10.9.sdk
+
 
 The gitian descriptors build 2 sets of files: Linux tools, then Apple binaries
 which are created using these tools. The build process has been designed to
@@ -69,3 +66,18 @@ Background images and other features can be added to DMG files by inserting a
 .DS_Store before creation. The easiest way to create this file is to build a
 DMG without one, move it to a device running OSX, customize the layout, then
 grab the .DS_Store file for later use. That is the approach taken here.
+
+As of OSX Mavericks (10.9), using an Apple-blessed key to sign binaries is a
+requirement in order to satisfy the new Gatekeeper requirements. Because this
+private key cannot be shared, we'll have to be a bit creative in order for the
+build process to remain somewhat deterministic. Here's how it works:
+
+- Builders use gitian to create an unsigned release. This outputs an unsigned
+  dmg which users may choose to bless and run. It also outputs an unsigned app
+  structure in the form of a tarball, which also contains all of the tools
+  that have been previously (deterministically) built in order to create a
+  final dmg.
+- The Apple keyholder uses this unsigned app to create a detached signature,
+  using the script that is also included there.
+- Builders feed the unsigned app + detached signature back into gitian. It
+  uses the pre-built tools to recombine the pieces into a deterministic dmg.

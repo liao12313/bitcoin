@@ -1,5 +1,5 @@
 // Copyright (c) 2012-2013 The Bitcoin Core developers
-// Distributed under the MIT/X11 software license, see the accompanying
+// Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "rpcserver.h"
@@ -7,6 +7,8 @@
 
 #include "base58.h"
 #include "netbase.h"
+
+#include "test/test_bitcoin.h"
 
 #include <boost/algorithm/string.hpp>
 #include <boost/test/unit_test.hpp>
@@ -39,14 +41,13 @@ Value CallRPC(string args)
         Value result = (*method)(params, false);
         return result;
     }
-    catch (Object& objError)
-    {
+    catch (const Object& objError) {
         throw runtime_error(find_value(objError, "message").get_str());
     }
 }
 
 
-BOOST_AUTO_TEST_SUITE(rpc_tests)
+BOOST_FIXTURE_TEST_SUITE(rpc_tests, TestingSetup)
 
 BOOST_AUTO_TEST_CASE(rpc_rawparams)
 {
@@ -110,14 +111,14 @@ BOOST_AUTO_TEST_CASE(rpc_rawsign)
 
 BOOST_AUTO_TEST_CASE(rpc_format_monetary_values)
 {
-    BOOST_CHECK(write_string(ValueFromAmount(0LL), false) == "0.00000000");
-    BOOST_CHECK(write_string(ValueFromAmount(1LL), false) == "0.00000001");
-    BOOST_CHECK(write_string(ValueFromAmount(17622195LL), false) == "0.17622195");
-    BOOST_CHECK(write_string(ValueFromAmount(50000000LL), false) == "0.50000000");
-    BOOST_CHECK(write_string(ValueFromAmount(89898989LL), false) == "0.89898989");
-    BOOST_CHECK(write_string(ValueFromAmount(100000000LL), false) == "1.00000000");
-    BOOST_CHECK(write_string(ValueFromAmount(2099999999999990LL), false) == "20999999.99999990");
-    BOOST_CHECK(write_string(ValueFromAmount(2099999999999999LL), false) == "20999999.99999999");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(0LL), false), "0.00000000");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(1LL), false), "0.00000001");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(17622195LL), false), "0.17622195");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(50000000LL), false), "0.50000000");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(89898989LL), false), "0.89898989");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(100000000LL), false), "1.00000000");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(2099999999999990LL), false), "20999999.99999990");
+    BOOST_CHECK_EQUAL(write_string(ValueFromAmount(2099999999999999LL), false), "20999999.99999999");
 }
 
 static Value ValueFromString(const std::string &str)
@@ -129,14 +130,14 @@ static Value ValueFromString(const std::string &str)
 
 BOOST_AUTO_TEST_CASE(rpc_parse_monetary_values)
 {
-    BOOST_CHECK(AmountFromValue(ValueFromString("0.00000001")) == 1LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("0.17622195")) == 17622195LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("0.5")) == 50000000LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("0.50000000")) == 50000000LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("0.89898989")) == 89898989LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("1.00000000")) == 100000000LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("20999999.9999999")) == 2099999999999990LL);
-    BOOST_CHECK(AmountFromValue(ValueFromString("20999999.99999999")) == 2099999999999999LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("0.00000001")), 1LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("0.17622195")), 17622195LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("0.5")), 50000000LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("0.50000000")), 50000000LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("0.89898989")), 89898989LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("1.00000000")), 100000000LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("20999999.9999999")), 2099999999999990LL);
+    BOOST_CHECK_EQUAL(AmountFromValue(ValueFromString("20999999.99999999")), 2099999999999999LL);
 }
 
 BOOST_AUTO_TEST_CASE(rpc_boostasiotocnetaddr)
