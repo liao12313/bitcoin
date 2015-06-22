@@ -6,21 +6,22 @@
 
 #include "test_bitcoin.h"
 
+#include "key.h"
 #include "main.h"
 #include "random.h"
 #include "txdb.h"
 #include "ui_interface.h"
 #include "util.h"
 #ifdef ENABLE_WALLET
-#include "db.h"
-#include "wallet.h"
+#include "wallet/db.h"
+#include "wallet/wallet.h"
 #endif
 
 #include <boost/filesystem.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/thread.hpp>
 
-CClientUIInterface uiInterface;
+CClientUIInterface uiInterface; // Declared but not defined in ui_interface.h
 CWallet* pwalletMain;
 
 extern bool fPrintToConsole;
@@ -28,11 +29,15 @@ extern void noui_connect();
 
 BasicTestingSetup::BasicTestingSetup()
 {
+        ECC_Start();
+        SetupEnvironment();
         fPrintToDebugLog = false; // don't want to write to debug.log file
+        fCheckBlockIndex = true;
         SelectParams(CBaseChainParams::MAIN);
 }
 BasicTestingSetup::~BasicTestingSetup()
 {
+        ECC_Stop();
 }
 
 TestingSetup::TestingSetup()
